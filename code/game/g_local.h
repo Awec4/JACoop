@@ -432,6 +432,7 @@ void G_CoopFadeInPlayer( gentity_t *ent, int ms );
 void G_CoopRiderThirdPerson( gentity_t *rider, qboolean on );
 void G_CoopRiderCenterPrint( gentity_t *rider, const char *str, float yFrac );
 void G_CoopRiderWeapon( gentity_t *rider, int wp );
+void G_CoopRiderViewMode( gentity_t *rider, int mode );	// 1 third person, -1 a gun (cg_gunAutoFirst)
 gentity_t *G_CoopLivingTeammate( const gentity_t *self );
 void G_CoopInitDownedCvars( void );
 void G_CoopResetDowned( void );
@@ -494,6 +495,10 @@ void G_CoopOnJoinerBegin( gentity_t *ent );
 void G_CoopForceCommand( gentity_t *ent );
 void G_CoopStartCommand( gentity_t *ent, const char *cmd );
 int G_CoopForcePointsAvailable( const gentity_t *ent );
+void G_CoopForceGrantPoint( void );				// end of mission: one force point for everybody
+void G_CoopForceCheated( const gentity_t *ent );	// setForce*: keep that joiner above the budget
+qboolean G_CoopPlayerSetForceCommand( gentity_t *ent, const char *cmd );	// g_svcmds.cpp
+qboolean CheatsOk( gentity_t *ent );				// g_cmds.cpp
 int G_CoopSaveState( void *buf, int bufSize );
 void G_CoopLoadState( const void *buf, int len );
 void G_CoopForwardSound( int entNum, int channel, int index, const char *path, int customSet );

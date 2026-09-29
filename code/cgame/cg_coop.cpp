@@ -818,6 +818,8 @@ void CG_CoopEnts_f( void )
 			ps->forcePowersActive, ps->forcePowerDuration[FP_SPEED], ps->forceDrainEntityNum, ps->viewangles[PITCH], ps->viewangles[YAW] );
 		Com_Printf( "coop: reticule en %.0f %.0f %.0f (3e personne %i), joueur en %.0f %.0f %.0f\n", cg_coopCrosshairPos[0], cg_coopCrosshairPos[1], cg_coopCrosshairPos[2], cg.renderingThirdPerson,
 			ps->origin[0], ps->origin[1], ps->origin[2] );
+		Com_Printf( "coop: camera en %.0f %.0f %.0f, viewheight %i, eFlags 0x%x, portee %.0f (override %i)\n", cg.refdef.vieworg[0], cg.refdef.vieworg[1], cg.refdef.vieworg[2],
+			ps->viewheight, ps->eFlags, cg.overrides.thirdPersonRange, ( cg.overrides.active & CG_OVERRIDE_3RD_PERSON_RNG ) ? 1 : 0 );
 	}
 	for ( int i = 0; i < cg.snap->numEntities; i++ )
 	{
@@ -2328,6 +2330,119 @@ static const char *CG_CoopReviveKeyName( void )
 	return coopReviveKey;
 }
 
+/*
+==============================================================================
+Spectating a teammate while dead
+
+A review (29/09): "When dying as the host, I was stuck in 1 spot while my
+friend completed the level, this needs a spectate mode or respawn". The
+respawn existed (beside a teammate, g_coopRespawnDelay after the death), but
+the dead player stared at his own body meanwhile. Now the camera follows a
+teammate who is up: the mouse turns around him, attack switches to the next
+one. The downed player can also give up (hold JUMP, G_CoopDownedThink).
+==============================================================================
+*/
+static int		coopSpecTarget = -1;
+static qboolean	coopSpecAttackWas;
+static char		coopJumpKey[32];
+static int		coopJumpKeyTime;
+
+// a teammate standing: alive, not on the ground, in this snapshot
+static qboolean CG_CoopTeammateUp( int k )
+{
+	if ( k < 0 || k >= MAX_CLIENTS || !cg.snap || k == cg.snap->ps.clientNum )
+	{
+		return qfalse;
+	}
+	const centity_t *cent = &cg_entities[k];
+	return (qboolean)( cent->currentValid && cent->currentState.eType == ET_PLAYER
+		&& cent->currentState.coopHealth > 0 && !( cent->currentState.powerups & ( 1 << PW_COOP_DOWNED ) ) );
+}
+
+static qboolean CG_CoopAnyTeammateUp( void )
+{
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		if ( CG_CoopTeammateUp( k ) )
+		{
+			return qtrue;
+		}
+	}
+	return qfalse;
+}
+
+static const char *CG_CoopJumpKeyName( void )
+{
+	if ( cg.time - coopJumpKeyTime > 1000 || !coopJumpKey[0] )
+	{
+		coopJumpKeyTime = cg.time;
+		cgi_Key_BindingKeyName( "+moveup", coopJumpKey, sizeof( coopJumpKey ) );
+		if ( !coopJumpKey[0] )
+		{
+			Q_strncpyz( coopJumpKey, G_CoopTr( "SAUT", "JUMP" ), sizeof( coopJumpKey ) );
+		}
+		Q_strupr( coopJumpKey );
+	}
+	return coopJumpKey;
+}
+
+// from CG_CalcViewValues: qtrue when org/angles now look at a teammate
+qboolean CG_CoopSpectate( vec3_t org, vec3_t angles )
+{
+	if ( !cg.snap || in_camera || cg.missionStatusShow || coopAllDownShown
+		|| cg.snap->ps.stats[STAT_HEALTH] > 0 || cg.snap->ps.stats[STAT_COOP_DOWN] > 0 )
+	{
+		coopSpecTarget = -1;
+		return qfalse;
+	}
+	usercmd_t cmd;
+	memset( &cmd, 0, sizeof( cmd ) );
+	cgi_GetUserCmd( cgi_GetCurrentCmdNumber(), &cmd );
+	const qboolean attack = (qboolean)( ( cmd.buttons & BUTTON_ATTACK ) != 0 );
+
+	if ( !CG_CoopTeammateUp( coopSpecTarget ) || ( attack && !coopSpecAttackWas ) )
+	{	// the next one standing, after the current one
+		int next = -1;
+		for ( int i = 1; i <= MAX_CLIENTS; i++ )
+		{
+			const int k = ( ( coopSpecTarget < 0 ? 0 : coopSpecTarget ) + i ) % MAX_CLIENTS;
+			if ( CG_CoopTeammateUp( k ) )
+			{
+				next = k;
+				break;
+			}
+		}
+		if ( next != coopSpecTarget && next >= 0 )
+		{
+			Com_Printf( "coop: spectating player %i\n", next );
+		}
+		coopSpecTarget = next;
+	}
+	coopSpecAttackWas = attack;
+	if ( coopSpecTarget < 0 )
+	{
+		return qfalse;
+	}
+
+	// the mouse still turns the usercmd angles while dead: orbit with them
+	vec3_t	focus, fwd, cam, look;
+	trace_t	tr;
+	static vec3_t	mins = { -6, -6, -6 };
+	static vec3_t	maxs = { 6, 6, 6 };
+
+	look[YAW] = SHORT2ANGLE( cmd.angles[YAW] );
+	look[PITCH] = Com_Clamp( -45.0f, 60.0f, AngleNormalize180( SHORT2ANGLE( cmd.angles[PITCH] ) ) );
+	look[ROLL] = 0;
+	VectorCopy( cg_entities[coopSpecTarget].lerpOrigin, focus );
+	focus[2] += 40;
+	AngleVectors( look, fwd, NULL, NULL );
+	VectorMA( focus, -130, fwd, cam );
+	CG_Trace( &tr, focus, mins, maxs, cam, coopSpecTarget, MASK_SOLID );
+	VectorCopy( tr.endpos, org );
+	VectorCopy( look, angles );
+	return qtrue;
+}
+
 static void CG_CoopDrawBar( float x, float y, float w, float h, float frac, const vec4_t fill )
 {
 	static const vec4_t back = { 0, 0, 0, 0.6f };
@@ -2435,6 +2550,10 @@ void CG_CoopDrawDowned( void )
 		else
 		{
 			CG_CoopDrawCentered( 132, va( G_CoopTr( "Un coequipier peut te relever (touche %s pres de toi)", "A teammate can revive you (%s key next to you)" ), CG_CoopReviveKeyName() ), dim, small, 1.0f );
+			if ( CG_CoopAnyTeammateUp() )
+			{	// G_CoopDownedThink: JUMP held COOP_GIVEUP_HOLD ms
+				CG_CoopDrawCentered( 150, va( G_CoopTr( "Maintenir %s pour abandonner (retour pres d'un coequipier)", "Hold %s to give up (respawn beside a teammate)" ), CG_CoopJumpKeyName() ), dim, small, 1.0f );
+			}
 			CG_CoopDrawCentered( 300, va( G_CoopTr( "Saignement : %i s", "Bleeding out: %i s" ), ( left + 999 ) / 1000 ), white, font, 1.0f );
 			CG_CoopDrawBar( 220, 326, 200, 12, coopDownMax > 0 ? (float)left / coopDownMax : 0, redFill );
 		}
@@ -2444,6 +2563,12 @@ void CG_CoopDrawDowned( void )
 	{
 		Com_Printf( "coop: up again (%i hp)\n", ps->stats[STAT_HEALTH] );
 		coopDownMax = 0;
+	}
+	if ( coopSpecTarget >= 0 && ps->stats[STAT_HEALTH] <= 0 )
+	{	// dead, watching a teammate until the respawn (CG_CoopSpectate)
+		CG_CoopDrawCentered( 400, G_CoopTr( "SPECTATEUR  -  retour pres d'un coequipier dans quelques secondes", "SPECTATING  -  back beside a teammate in a few seconds" ), white, small, 1.0f );
+		CG_CoopDrawCentered( 418, G_CoopTr( "Souris : tourner autour   -   Tir : joueur suivant", "Mouse: look around   -   Attack: next player" ), dim, small, 0.9f );
+		return;
 	}
 
 	if ( ps->stats[STAT_COOP_REVIVE] > 0 )

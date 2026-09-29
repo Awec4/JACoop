@@ -384,8 +384,10 @@ void G_CoopUpdateAppearance( gentity_t *ent )
 	{
 		Com_sprintf( spec, sizeof( spec ), "%s;%s;%s;%s", a->modelName, a->customSkin, a->surfOff, a->surfOn );
 	}
-	G_CoopAppendSaber( spec, sizeof( spec ), &ent->client->ps.saber[0] );
-	G_CoopAppendSaber( spec, sizeof( spec ), ent->client->ps.dualSabers ? &ent->client->ps.saber[1] : NULL );
+	// a player driving an AT-ST keeps its saber in its playerState: not on the walker
+	const qboolean noSaber = (qboolean)( ent->client->NPC_class == CLASS_ATST );
+	G_CoopAppendSaber( spec, sizeof( spec ), noSaber ? NULL : &ent->client->ps.saber[0] );
+	G_CoopAppendSaber( spec, sizeof( spec ), ( !noSaber && ent->client->ps.dualSabers ) ? &ent->client->ps.saber[1] : NULL );
 	Q_strcat( spec, sizeof( spec ), va( ";%i", (int)ent->client->NPC_class ) );
 	const byte *rgba = ent->client->renderInfo.customRGBA;
 	Q_strcat( spec, sizeof( spec ), va( ";%i,%i,%i,%i", rgba[0], rgba[1], rgba[2], rgba[3] ) );
@@ -1813,6 +1815,29 @@ void G_CoopRiderThirdPerson( gentity_t *rider, qboolean on )
 	}
 }
 
+// a weapon change's view switch (PM_CoopViewForWeapon): 1 third person, -1 a gun
+// (first person if the player's own cg_gunAutoFirst says so, CG_CoopThirdPerson_f)
+void G_CoopRiderViewMode( gentity_t *rider, int mode )
+{
+	if ( !G_CoopIsPlayer( rider ) )
+	{
+		return;
+	}
+	if ( rider->s.number == 0 )
+	{
+		if ( mode > 0 )
+		{
+			gi.cvar_set( "cg_thirdperson", "1" );
+		}
+		else if ( mode == 0 || cg_gunAutoFirst.integer )
+		{
+			gi.cvar_set( "cg_thirdperson", "0" );
+		}
+		return;
+	}
+	gi.SendServerCommand( rider->s.number, "tp %i", mode > 0 ? 1 : ( mode < 0 ? -1 : 0 ) );
+}
+
 void G_CoopRiderCenterPrint( gentity_t *rider, const char *str, float yFrac )
 {
 	if ( !G_CoopIsPlayer( rider ) )
@@ -1992,7 +2017,10 @@ typedef struct coopDown_s {
 	vec3_t	safeOrigin;			// last spot where he stood on solid ground, healthy
 	int		safeTime;			// level.time of that spot, 0 = none remembered yet
 	float	safeYaw;
+	int		giveUpTime;			// level.time the downed player started holding JUMP to give up, 0 = not
 } coopDown_t;
+
+#define COOP_GIVEUP_HOLD	1500	// ms of JUMP held on the ground to stop waiting for a revive
 
 static coopDown_t	coopDown[MAX_CLIENTS];
 static qboolean		coopPendingAutosave;	// a target_autosave fired with the host down (deferred checkpoint below)
@@ -2194,7 +2222,7 @@ void G_CoopClearDowned( gentity_t *ent )
 	{
 		G_CoopReviveCancel( ent );
 	}
-	d->downTime = d->bleedOutTime = d->reviveStartTime = 0;
+	d->downTime = d->bleedOutTime = d->reviveStartTime = d->giveUpTime = 0;
 	d->reviverNum = d->revivingNum = ENTITYNUM_NONE;
 	ent->client->ps.powerups[PW_COOP_DOWNED] = 0;
 	ent->client->ps.stats[STAT_COOP_DOWN] = 0;
@@ -2361,6 +2389,7 @@ qboolean G_CoopTryDown( gentity_t *targ, gentity_t *attacker, int mod, int dflag
 	ps->stats[STAT_ARMOR] = 0;
 	d->downTime = level.time;
 	d->bleedOutTime = level.time + bleed;
+	d->giveUpTime = 0;
 	d->reviverNum = ENTITYNUM_NONE;
 	d->reviveStartTime = 0;
 	if ( d->revivingNum != ENTITYNUM_NONE )
@@ -2526,6 +2555,31 @@ void G_CoopDownedThink( gentity_t *ent, usercmd_t *ucmd )
 
 	if ( me->downTime )
 	{	// on the ground: no moves, no buttons, still lying down
+		// coop: holding JUMP gives up - bleed out now and come back beside a
+		// teammate after the respawn delay, watching him meanwhile (CG_CoopSpectate).
+		// A review (29/09): "When dying as the host, I was stuck in 1 spot while my
+		// friend completed the level". Only while somebody else is up to come back to.
+		if ( g_developer && g_developer->integer > 1 )
+		{
+			gi.Printf( "coop: downed think %i upmove %i teammate %i reviver %i\n", ent->s.number, ucmd->upmove,
+				G_CoopLivingTeammate( ent ) ? G_CoopLivingTeammate( ent )->s.number : -1, me->reviverNum );
+		}
+		if ( ucmd->upmove > 0 && G_CoopLivingTeammate( ent ) && me->reviverNum == ENTITYNUM_NONE )
+		{
+			if ( !me->giveUpTime )
+			{
+				me->giveUpTime = level.time;
+			}
+			else if ( level.time - me->giveUpTime >= COOP_GIVEUP_HOLD && me->bleedOutTime > level.time )
+			{
+				gi.Printf( "coop: %s gives up waiting for a revive\n", ent->client->pers.netname );
+				me->bleedOutTime = level.time;	// G_CoopDownedFrame does the rest
+			}
+		}
+		else
+		{
+			me->giveUpTime = 0;
+		}
 		ucmd->forwardmove = ucmd->rightmove = ucmd->upmove = 0;
 		ucmd->buttons = 0;
 		ucmd->generic_cmd = 0;

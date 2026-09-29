@@ -8878,6 +8878,39 @@ static void PM_WaterEvents( void ) {		// FIXME?
 PM_BeginWeaponChange
 ===============
 */
+/*
+===============
+PM_CoopViewForWeapon
+
+coop: the first / third person switch that goes with a weapon change belongs
+to the player who changes weapon. cg_thirdperson is a cvar of the machine
+running this: a joiner's pmove runs on the host too, and "clientNum <
+MAX_CLIENTS" flipped the HOST's view to first person every time a joiner
+picked up a gun (a player's review, 29/09). mode 1 = third person (saber,
+AT-ST), -1 = a gun: first person if that player's own cg_gunAutoFirst says so.
+===============
+*/
+extern qboolean cg_remoteClient;
+extern void G_CoopRiderViewMode( gentity_t *rider, int mode );	// g_coop.cpp
+static void PM_CoopViewForWeapon( int mode )
+{
+	if ( pm->ps->clientNum == 0 || cg_remoteClient )
+	{	// the host's own view, or a joiner predicting itself on its own machine
+		if ( mode > 0 )
+		{
+			gi.cvar_set( "cg_thirdperson", "1" );
+		}
+		else if ( cg_gunAutoFirst.integer )
+		{
+			gi.cvar_set( "cg_thirdperson", "0" );
+		}
+	}
+	else if ( pm->ps->clientNum < MAX_CLIENTS && pm->gent && !cg_remoteClient )
+	{	// the host running a joiner's move: its own cgame decides
+		G_CoopRiderViewMode( pm->gent, mode );
+	}
+}
+
 static void PM_BeginWeaponChange( int weapon ) {
 
 	if ( pm->gent && pm->gent->client && pm->gent->client->pers.enterTime >= level.time - 500 )
@@ -8938,7 +8971,7 @@ static void PM_BeginWeaponChange( int weapon ) {
 	{
 		if ( pm->ps->clientNum < MAX_CLIENTS )
 		{
-			gi.cvar_set( "cg_thirdperson", "1" );
+			PM_CoopViewForWeapon( 1 );	// coop: that player's view, not the host's
 		}
 	}
 	else if ( weapon == WP_SABER )
@@ -9043,7 +9076,11 @@ static void PM_FinishWeaponChange( void ) {
 		if ( pm->gent )
 		{
 			WP_SaberInitBladeData( pm->gent );
-			if ( (pm->ps->clientNum < MAX_CLIENTS||PM_ControlledByPlayer()) )
+			if ( pm->ps->clientNum < MAX_CLIENTS )
+			{
+				PM_CoopViewForWeapon( 1 );	// coop: that player's view, not the host's
+			}
+			else if ( PM_ControlledByPlayer() )
 			{
 				gi.cvar_set( "cg_thirdperson", "1" );
 			}
@@ -9079,12 +9116,11 @@ static void PM_FinishWeaponChange( void ) {
 		}
 
 		if ( pm->ps->clientNum < MAX_CLIENTS
-			&& cg_gunAutoFirst.integer
 			&& !PM_RidingVehicle()
 //			&& oldWeap == WP_SABER
 			&& weapon != WP_NONE )
 		{
-			gi.cvar_set( "cg_thirdperson", "0" );
+			PM_CoopViewForWeapon( -1 );	// coop: that player's view and its own cg_gunAutoFirst
 		}
 		pm->ps->saberMove = LS_NONE;
 		pm->ps->saberBlocking = BLK_NO;

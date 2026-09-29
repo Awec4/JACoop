@@ -1777,6 +1777,11 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
+	if ( G_CoopPlayerSetForceCommand( ent, cmd ) )
+	{	// coop: a joiner's setForceAll / setForce<Power> / setSaberAll (cheats), on itself
+		return;
+	}
+
 	if (Q_stricmp (cmd, "spawn") == 0)
 	{
 		Cmd_Spawn( ent );

@@ -318,7 +318,10 @@ qboolean CG_CheckModifyUCmd( usercmd_t *cmd, vec3_t viewangles )
 				overridAngles = qtrue;
 			}
 		}
-		if ( G_CheckClampUcmd( &g_entities[cg_localEntNum], cmd ) )
+		// coop: not while downed - the knockdown pose made this clear the whole
+		// command, JUMP included, and the host could never give up (hold JUMP,
+		// G_CoopDownedThink, which strips everything else itself on the server)
+		if ( cg.snap->ps.stats[STAT_COOP_DOWN] <= 0 && G_CheckClampUcmd( &g_entities[cg_localEntNum], cmd ) )
 		{
 			CG_SetClientViewAngles( g_entities[cg_localEntNum].client->ps.viewangles, qfalse );
 			if ( viewangles )

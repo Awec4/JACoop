@@ -216,6 +216,7 @@ static void UI_CoopEndLevelState( void )
 	Cvar_Set( "ui_coopEndTitle", CL_GetCoopEndHeader( 1 ) );
 	Cvar_Set( "ui_coopEndStats", CL_GetCoopEndHeader( 2 ) );
 	Cvar_Set( "ui_coopEndInfo", CL_GetCoopEndHeader( 3 ) );
+	Cvar_Set( "ui_coopEndForcePoint", CL_GetCoopEndHeader( 4 )[0] == '1' ? "1" : "0" );	// this loadout gives a force point
 	const qboolean host = (qboolean)( com_sv_running && com_sv_running->integer );
 	Cvar_Set( "ui_coopEndHost", host ? "1" : "0" );
 	if ( host && phase[0] == 'W' )
@@ -2023,6 +2024,30 @@ static qboolean UI_RunMenuScript ( const char **args )
 		if ( !Q_stricmp( name, "coopHiltReturn" ) )
 		{
 			UI_CoopHiltReturn();
+			return qtrue;
+		}
+		if ( !Q_stricmp( name, "coopForceWeapons" ) )
+		{	// the WEAPONS button the Force screen shows once the point is spent
+			// (UI_ForcePowerWeaponsButton). It opened coopLobby whatever the screen was
+			// opened from: at the end of a mission that dropped the player on a lobby
+			// panel with nothing to do - "the Force Power Select and Weapon Menus got
+			// stuck, mostly my friend when we quickly progressed" (review, 29/09).
+			const char *from = Cvar_VariableString( "ui_coopForceFrom" );
+			Menus_CloseAll();
+			if ( !Q_stricmp( from, "endlevel" ) )
+			{
+				Menus_ActivateByName( "coopWpnSelect" );
+			}
+			else if ( !Q_stricmp( from, "lobby" ) )
+			{
+				Menus_OpenByName( "coopLobby" );
+			}
+			else
+			{
+				trap_Key_SetCatcher( trap_Key_GetCatcher() & ~KEYCATCH_UI );
+				trap_Key_ClearStates();
+				Cvar_Set( "cl_paused", "0" );
+			}
 			return qtrue;
 		}
 		if ( !Q_stricmp( name, "coopSaberInit" ) )
@@ -6656,6 +6681,11 @@ static void UI_AffectForcePowerLevel ( const char *forceName )
 	{	// coop: the host already spent its point at this end of mission (the panel can be
 		// reopened, the campaign still gives one point per mission - joiners are checked
 		// by the host itself in G_CoopForceCommand)
+		return;
+	}
+	if ( pState && !Q_stricmp( Cvar_VariableString( "ui_coopForceFrom" ), "endlevel" )
+		&& !Cvar_VariableIntegerValue( "ui_coopEndForcePoint" ) )
+	{	// coop: the loadout before a story map (academy -> hoth2/vjun1/taspir1) arms you, it gives no point
 		return;
 	}
 

@@ -59,8 +59,9 @@ extern void G_AddWeaponModels( gentity_t *ent );
 #define COOPEND_START_DELAY		100		// ms: target_level_change sets tier_storyinfo and the stats AFTER calling G_ChangeMap
 
 typedef struct coopEndMission_s {
-	char	map[MAX_QPATH];
-	char	label[64];
+	char		map[MAX_QPATH];
+	char		label[64];
+	qboolean	story;	// "back to the academy": no loadout, straight there
 } coopEndMission_t;
 
 // the campaign's three hubs, in the order of ui/ingamemissionselect?.menu
@@ -175,35 +176,117 @@ static void G_CoopEndMissionTitle( const char *map, char *out, int outSize )
 	}
 }
 
-// which hub the campaign is in, from tier_storyinfo (same ranges as
-// UI_LoadMissionSelectMenu in ui/ui_main.cpp); 0 = no mission to choose here
-static const coopEndTierEntry_t *G_CoopEndTier( void )
+// What the stock screens do after the "+menu" a level asked for, read from
+// the menu name and tier_storyinfo exactly like the retail menus do:
+//
+//   ingameMissionSelect (debrief after a hub mission, tier_storyinfo already ++'d)
+//     2 4        choose a hub 1 mission        3   t1_inter (interlude)
+//     5          the last hub 1 mission, or back to the academy (academy2)
+//     6          academy2 (hub 1 all done)
+//     8 9 10     choose a hub 2 mission        11  last one, or academy4
+//     12         academy4 -> vjun1             (all five done)
+//     14 15 16   choose a hub 3 mission        17  last one, or academy6
+//     18         academy6 -> taspir1
+//   ingameGotoTier       1 / 7 / 13: open hub 1 / 2 / 3 (yavin2, academy3, academy5)
+//   ingameMissionSelectN hub N (t1_inter ends there)
+//   ingameWpnSelect      academy2/4/6: weapons, then hoth2 / vjun1 / taspir1
+//
+// Anything else (the saber menus of academy3/5...) stays the host's stock menu.
+// The first version only looked at tier_storyinfo ranges: 12 fell in hub 3's
+// and the vote skipped academy4 and the whole of Vjun (a player's review, 29/09),
+// 3 fell in hub 1's and skipped t1_inter.
+typedef enum
 {
+	COOPNEXT_STOCK,		// not ours: the host's stock menu, the others wait
+	COOPNEXT_CHOOSE,	// vote on the hub missions left, then the loadout
+	COOPNEXT_STORY,		// straight to a story map, no loadout
+	COOPNEXT_ARMORY		// the loadout (weapons), then a story map
+} coopEndNext_t;
+
+static coopEndNext_t			coopEndNextKind = COOPNEXT_STOCK;
+static const coopEndTierEntry_t	*coopEndNextTier;		// COOPNEXT_CHOOSE: the hub
+static const char				*coopEndNextStory;		// the story map: STORY / ARMORY, or the "academy" choice of CHOOSE
+static qboolean					coopEndForcePoint;		// this loadout follows a mission choice: one force point to spend
+
+static coopEndNext_t G_CoopEndNextStep( void )
+{
+	static const coopEndTierEntry_t *hubs[3] = { coopEndTier1, coopEndTier2, coopEndTier3 };
+	static const char *academies[3] = { "academy2", "academy4", "academy6" };
 	const int story = gi.Cvar_VariableIntegerValue( "tier_storyinfo" );
 
-	if ( story > 0 && story < 5 )
+	coopEndNextTier = NULL;
+	coopEndNextStory = NULL;
+
+	if ( !Q_stricmp( coopEndStockMenu, "ingameMissionSelect" ) )
 	{
-		return coopEndTier1;
+		if ( story == 3 )
+		{
+			coopEndNextStory = "t1_inter";
+			return COOPNEXT_STORY;
+		}
+		for ( int h = 0; h < 3; h++ )
+		{
+			const int base = h * 6;		// 2..6, 8..12, 14..18
+			if ( story < base + 2 || story > base + 6 )
+			{
+				continue;
+			}
+			if ( story == base + 6 )
+			{	// the five missions are done
+				coopEndNextStory = academies[h];
+				return COOPNEXT_STORY;
+			}
+			coopEndNextTier = hubs[h];
+			if ( story == base + 5 )
+			{	// four done: the fifth, or the academy
+				coopEndNextStory = academies[h];
+			}
+			return COOPNEXT_CHOOSE;
+		}
+		return COOPNEXT_STOCK;
 	}
-	if ( story > 6 && story < 10 )
+	if ( !Q_stricmp( coopEndStockMenu, "ingameGotoTier" ) )
+	{	// same ranges as UI_LoadMissionSelectMenu (ui/ui_main.cpp)
+		if ( story > 0 && story < 5 )
+		{
+			coopEndNextTier = coopEndTier1;
+		}
+		else if ( story > 6 && story < 10 )
+		{
+			coopEndNextTier = coopEndTier2;
+		}
+		else if ( story > 11 && story < 15 )
+		{
+			coopEndNextTier = coopEndTier3;
+		}
+		return coopEndNextTier ? COOPNEXT_CHOOSE : COOPNEXT_STOCK;
+	}
+	if ( !Q_stricmpn( coopEndStockMenu, "ingameMissionSelect", 19 ) && coopEndStockMenu[19] >= '1' && coopEndStockMenu[19] <= '3' )
 	{
-		return coopEndTier2;
+		coopEndNextTier = hubs[coopEndStockMenu[19] - '1'];
+		return COOPNEXT_CHOOSE;
 	}
-	if ( story > 11 && story < 15 )
-	{
-		return coopEndTier3;
+	if ( !Q_stricmp( coopEndStockMenu, "ingameWpnSelect" ) )
+	{	// ui/ingamewpnselect.menu: weapon_menu 1/2/3 begins hoth2 / vjun1 / taspir1
+		static const char *next[3] = { "hoth2", "vjun1", "taspir1" };
+		const int wm = gi.Cvar_VariableIntegerValue( "weapon_menu" );
+		if ( wm >= 1 && wm <= 3 )
+		{
+			coopEndNextStory = next[wm - 1];
+			return COOPNEXT_ARMORY;
+		}
 	}
-	return NULL;
+	return COOPNEXT_STOCK;
 }
 
 // the missions of the current hub that are not done yet (cvar tiers_complete
-// holds the maps already played, exactly like the galaxy menu's disablecvar)
-static void G_CoopEndBuildMissions( void )
+// holds the maps already played, exactly like the galaxy menu's disablecvar),
+// plus "back to the academy" where the stock debrief offers it
+static void G_CoopEndBuildMissions( const coopEndTierEntry_t *tier, const char *academy )
 {
 	char done[MAX_STRING_CHARS];
 
 	coopEndNumMissions = 0;
-	const coopEndTierEntry_t *tier = G_CoopEndTier();
 	if ( !tier )
 	{
 		return;
@@ -218,6 +301,14 @@ static void G_CoopEndBuildMissions( void )
 		coopEndMission_t *m = &coopEndMissions[coopEndNumMissions++];
 		Q_strncpyz( m->map, e->map, sizeof( m->map ) );
 		G_CoopEndMissionTitle( e->map, m->label, sizeof( m->label ) );
+		m->story = qfalse;
+	}
+	if ( academy && coopEndNumMissions < COOPEND_MAX_MISSIONS )
+	{
+		coopEndMission_t *m = &coopEndMissions[coopEndNumMissions++];
+		Q_strncpyz( m->map, academy, sizeof( m->map ) );
+		Q_strncpyz( m->label, "@MENUS_RETURN_TO_ACADEMY", sizeof( m->label ) );
+		m->story = qtrue;
 	}
 }
 
@@ -283,7 +374,10 @@ static void G_CoopEndPublish( void )
 	static char	last[MAX_STRING_CHARS];
 	char		now[MAX_STRING_CHARS];
 
-	Com_sprintf( now, sizeof( now ), "%c\t%s\t%s\t%s", G_CoopEndPhaseChar(), coopEndTitle, coopEndStats, coopEndInfo );
+	// 5th field: 1 when this loadout gives a force point (a mission was chosen;
+	// not before the academy's story maps, where the stock game only arms you)
+	Com_sprintf( now, sizeof( now ), "%c\t%s\t%s\t%s\t%i", G_CoopEndPhaseChar(), coopEndTitle, coopEndStats, coopEndInfo,
+		( coopEndPhase == COOPEND_LOADOUT && coopEndForcePoint ) ? 1 : 0 );
 	if ( coopEndPhase == COOPEND_VOTE )
 	{
 		for ( int m = 0; m < coopEndNumMissions; m++ )
@@ -334,11 +428,22 @@ static void G_CoopEndLaunch( void )
 	gi.SendConsoleCommand( va( "maptransition %s\n", coopEndMap ) );
 }
 
-static void G_CoopEndStartLoadout( const char *map, const char *label )
+static void G_CoopEndStartLoadout( const char *map, const char *label, qboolean story )
 {
 	Q_strncpyz( coopEndMap, map, sizeof( coopEndMap ) );
 	Q_strncpyz( coopEndTitle, label, sizeof( coopEndTitle ) );
+	if ( story )
+	{	// a story map (academy, interlude): the stock screens go there directly
+		gi.Printf( "coop: next is the story map %s\n", coopEndMap );
+		G_CoopEndLaunch();
+		return;
+	}
 	memset( coopEndReady, 0, sizeof( coopEndReady ) );
+	if ( coopEndForcePoint )
+	{	// the stock ingameForceSelect of this step: one point each, joiners
+		// included, whether or not the host has spent its own yet
+		G_CoopForceGrantPoint();
+	}
 	coopEndPhase = COOPEND_LOADOUT;
 	coopEndPhaseTime = level.time;
 	gi.Printf( "coop: next mission is %s (%s)\n", coopEndMap, coopEndTitle );
@@ -377,13 +482,23 @@ static void G_CoopEndTally( void )
 	{
 		best = coopEndVotes[0];	// tie: the host's vote
 	}
-	G_CoopEndStartLoadout( coopEndMissions[best].map, coopEndMissions[best].label );
+	coopEndForcePoint = (qboolean)!coopEndMissions[best].story;
+	G_CoopEndStartLoadout( coopEndMissions[best].map, coopEndMissions[best].label, coopEndMissions[best].story );
 }
 
 // everybody left the debrief: vote, straight to the loadout when there is
-// nothing to choose, or hand the host back its stock screens
+// nothing to choose, straight to a story map, or hand the host back its stock
+// screens
 static void G_CoopEndAfterDebrief( void )
 {
+	if ( coopEndNumMissions == 0 && coopEndNextStory )
+	{	// no choice here (academy2/4/6 when a hub is over, t1_inter, hoth2/vjun1/taspir1)
+		char label[64];
+		G_CoopEndMissionTitle( coopEndNextStory, label, sizeof( label ) );
+		coopEndForcePoint = qfalse;
+		G_CoopEndStartLoadout( coopEndNextStory, label, (qboolean)( coopEndNextKind == COOPNEXT_STORY ) );
+		return;
+	}
 	if ( coopEndNumMissions >= 2 )
 	{
 		for ( int i = 0; i < MAX_CLIENTS; i++ )
@@ -397,7 +512,8 @@ static void G_CoopEndAfterDebrief( void )
 	}
 	if ( coopEndNumMissions == 1 )
 	{
-		G_CoopEndStartLoadout( coopEndMissions[0].map, coopEndMissions[0].label );
+		coopEndForcePoint = (qboolean)!coopEndMissions[0].story;
+		G_CoopEndStartLoadout( coopEndMissions[0].map, coopEndMissions[0].label, coopEndMissions[0].story );
 		return;
 	}
 	// the campaign does not offer a choice here (academy, hub boss, cinematic
@@ -441,12 +557,16 @@ static void G_CoopEndStart( void )
 		Com_sprintf( coopEndStats, sizeof( coopEndStats ), "#S %s", killed );
 	}
 	coopEndInfo[0] = '\0';
-	G_CoopEndBuildMissions();
+	coopEndForcePoint = qfalse;
+	coopEndNextKind = G_CoopEndNextStep();
+	G_CoopEndBuildMissions( coopEndNextKind == COOPNEXT_CHOOSE ? coopEndNextTier : NULL, coopEndNextKind == COOPNEXT_CHOOSE ? coopEndNextStory : NULL );
 	coopEndPhase = COOPEND_DEBRIEF;
 	coopEndPhaseTime = level.time;
 	G_CoopEndProtectPlayers( qtrue );
 	gi.cvar_set( "timescale", "1" );
-	gi.Printf( "coop: end of mission %s, %i mission(s) to choose from\n", level.mapname, coopEndNumMissions );
+	gi.Printf( "coop: end of mission %s (menu %s, tier_storyinfo %i): %i mission(s) to choose from, story map %s\n",
+		level.mapname, coopEndStockMenu, gi.Cvar_VariableIntegerValue( "tier_storyinfo" ), coopEndNumMissions,
+		coopEndNextStory ? coopEndNextStory : "-" );
 	G_CoopEndOpenMenu( "coopDebrief" );
 }
 
@@ -462,6 +582,10 @@ void G_CoopEndLevelInit( void )
 	coopEndStartTime = coopEndPhaseTime = 0;
 	coopEndLaunched = qfalse;
 	coopEndNumMissions = 0;
+	coopEndNextKind = COOPNEXT_STOCK;
+	coopEndNextTier = NULL;
+	coopEndNextStory = NULL;
+	coopEndForcePoint = qfalse;
 	coopEndStockMenu[0] = coopEndMap[0] = coopEndTitle[0] = coopEndStats[0] = coopEndInfo[0] = '\0';
 	memset( coopEndGodmode, 0, sizeof( coopEndGodmode ) );
 	memset( coopEndNextDone, 0, sizeof( coopEndNextDone ) );
@@ -559,6 +683,27 @@ void G_CoopEndLevelFrame( void )
 		if ( ready >= players )
 		{
 			G_CoopEndLaunch();
+		}
+		break;
+
+	case COOPEND_WAIT:
+		if ( !Q_stricmp( coopEndStockMenu, "saberstyleMenu" ) || !Q_stricmp( coopEndStockMenu, "saberMenu" ) )
+		{	// academy3 / academy5: the host's saber screen ends by opening ingameGotoTier
+			// with tier_storyinfo 7 / 13 (ui/saberstyle.menu, ui/saber.menu). From there
+			// on the stock game chooses a hub mission: that is everybody's vote again.
+			const int story = gi.Cvar_VariableIntegerValue( "tier_storyinfo" );
+			if ( story == 7 || story == 13 )
+			{
+				Q_strncpyz( coopEndStockMenu, "ingameGotoTier", sizeof( coopEndStockMenu ) );
+				coopEndNextKind = G_CoopEndNextStep();
+				G_CoopEndBuildMissions( coopEndNextKind == COOPNEXT_CHOOSE ? coopEndNextTier : NULL, NULL );
+				if ( coopEndNumMissions )
+				{
+					gi.Printf( "coop: the host left the saber screen (tier_storyinfo %i): vote on %i mission(s)\n", story, coopEndNumMissions );
+					coopEndInfo[0] = '\0';
+					G_CoopEndAfterDebrief();
+				}
+			}
 		}
 		break;
 

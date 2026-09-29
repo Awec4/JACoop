@@ -325,36 +325,42 @@ SetForceCmd SetForceTable[NUM_FORCE_POWERS] = {
 	{ "forceSight",			"setForceSight",		FORCE_LEVEL_3			},
 };
 
+// coop: the player the setForce* / setSaberAll commands change - the host from
+// its console, a joiner through ClientCommand (G_CoopPlayerSetForceCommand)
+static gentity_t *svcmdForceTarget = NULL;
+
 static void Svcmd_ForceSetLevel_f( int forcePower )
 {
-	if ( !&g_entities[0] || !g_entities[0].client )
+	gentity_t *self = svcmdForceTarget ? svcmdForceTarget : &g_entities[0];
+
+	if ( !self || !self->client )
 	{
 		return;
 	}
 	const char *newVal = gi.argv(1);
 	if ( !VALIDSTRING( newVal ) )
 	{
-		gi.Printf( "Current %s level is %d\n", SetForceTable[forcePower].desc, g_entities[0].client->ps.forcePowerLevel[forcePower] );
-		gi.Printf( "Usage:  %s <level> (0 - %i)\n", SetForceTable[forcePower].cmdname, SetForceTable[forcePower].maxlevel );
+		G_CoopPrintTr( self->s.number, "print", "%s : niveau actuel %d\n", "Current %s level is %d\n", SetForceTable[forcePower].desc, self->client->ps.forcePowerLevel[forcePower] );
+		G_CoopPrintTr( self->s.number, "print", "Utilisation :  %s <niveau> (0 - %i)\n", "Usage:  %s <level> (0 - %i)\n", SetForceTable[forcePower].cmdname, SetForceTable[forcePower].maxlevel );
 		return;
 	}
 	int val = atoi(newVal);
 	if ( val > FORCE_LEVEL_0 )
 	{
-		g_entities[0].client->ps.forcePowersKnown |= ( 1 << forcePower );
+		self->client->ps.forcePowersKnown |= ( 1 << forcePower );
 	}
 	else
 	{
-		g_entities[0].client->ps.forcePowersKnown &= ~( 1 << forcePower );
+		self->client->ps.forcePowersKnown &= ~( 1 << forcePower );
 	}
-	g_entities[0].client->ps.forcePowerLevel[forcePower] = val;
-	if ( g_entities[0].client->ps.forcePowerLevel[forcePower] < FORCE_LEVEL_0 )
+	self->client->ps.forcePowerLevel[forcePower] = val;
+	if ( self->client->ps.forcePowerLevel[forcePower] < FORCE_LEVEL_0 )
 	{
-		g_entities[0].client->ps.forcePowerLevel[forcePower] = FORCE_LEVEL_0;
+		self->client->ps.forcePowerLevel[forcePower] = FORCE_LEVEL_0;
 	}
-	else if ( g_entities[0].client->ps.forcePowerLevel[forcePower] > SetForceTable[forcePower].maxlevel )
+	else if ( self->client->ps.forcePowerLevel[forcePower] > SetForceTable[forcePower].maxlevel )
 	{
-		g_entities[0].client->ps.forcePowerLevel[forcePower] = SetForceTable[forcePower].maxlevel;
+		self->client->ps.forcePowerLevel[forcePower] = SetForceTable[forcePower].maxlevel;
 	}
 }
 
@@ -651,11 +657,12 @@ static void Svcmd_SetForceAll_f(void)
 		Svcmd_ForceSetLevel_f( i );
 	}
 
-	if( gi.argc() > 1 )
+	gentity_t *self = svcmdForceTarget ? svcmdForceTarget : &g_entities[0];
+	if( gi.argc() > 1 && self->client )
 	{
 		for ( int i = SS_NONE+1; i < SS_NUM_SABER_STYLES; i++ )
 		{
-			g_entities[0].client->ps.saberStylesKnown |= (1<<i);
+			self->client->ps.saberStylesKnown |= (1<<i);
 		}
 	}
 }
@@ -665,10 +672,74 @@ static void Svcmd_SetSaberAll_f(void)
 	Svcmd_ForceSetLevel_f( FP_SABERTHROW );
 	Svcmd_ForceSetLevel_f( FP_SABER_DEFENSE );
 	Svcmd_ForceSetLevel_f( FP_SABER_OFFENSE );
+	gentity_t *self = svcmdForceTarget ? svcmdForceTarget : &g_entities[0];
+	if ( !self->client )
+	{
+		return;
+	}
 	for ( int i = SS_NONE+1; i < SS_NUM_SABER_STYLES; i++ )
 	{
-		g_entities[0].client->ps.saberStylesKnown |= (1<<i);
+		self->client->ps.saberStylesKnown |= (1<<i);
 	}
+}
+
+/*
+=================
+G_CoopPlayerSetForceCommand
+
+coop: a joiner typed setForceAll / setSaberAll / setForce<Power> /
+setSaber<Throw|Defense|Offense>. In SP these are the host's own console
+commands and only ever touch entity 0, so a joiner's went nowhere (a player's
+review, 29/09). Same cheat rule as give/god (helpusobi on the host), applied to
+the player who asked. qfalse when cmd is none of them.
+=================
+*/
+qboolean G_CoopPlayerSetForceCommand( gentity_t *ent, const char *cmd )
+{
+	void ( *run )( void ) = NULL;
+	int power = -1;
+
+	if ( !Q_stricmp( cmd, "setForceAll" ) )
+	{
+		run = Svcmd_SetForceAll_f;
+	}
+	else if ( !Q_stricmp( cmd, "setSaberAll" ) )
+	{
+		run = Svcmd_SetSaberAll_f;
+	}
+	else
+	{
+		for ( int fp = 0; fp < NUM_FORCE_POWERS; fp++ )
+		{
+			if ( !Q_stricmp( cmd, SetForceTable[fp].cmdname ) )
+			{
+				power = fp;
+				break;
+			}
+		}
+		if ( power < 0 )
+		{
+			return qfalse;
+		}
+	}
+	if ( !CheatsOk( ent ) )
+	{
+		return qtrue;
+	}
+	svcmdForceTarget = ent;
+	if ( run )
+	{
+		run();
+	}
+	else
+	{
+		Svcmd_ForceSetLevel_f( power );
+	}
+	svcmdForceTarget = NULL;
+	gi.Printf( "coop: %s used %s %s (known 0x%x)\n", ent->client->pers.netname, cmd, gi.argv( 1 ), ent->client->ps.forcePowersKnown );
+	G_CoopForceCheated( ent );	// the budget check must not take it back
+	G_CoopStoreState( ent );
+	return qtrue;
 }
 
 static void Svcmd_RunScript_f(void)

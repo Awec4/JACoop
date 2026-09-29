@@ -421,22 +421,24 @@ void G_DriveATST( gentity_t *pEnt, gentity_t *atst )
 		pEnt->client->ps.stats[STAT_WEAPONS] &= ~(( 1 << WP_ATST_MAIN )|( 1 << WP_ATST_SIDE ));
 		pEnt->client->ps.ammo[weaponData[WP_ATST_MAIN].ammoIndex] = 0;
 		pEnt->client->ps.ammo[weaponData[WP_ATST_SIDE].ammoIndex] = 0;
+		// coop: the weapon, the view and the camera are the driver's - a joiner's
+		// cgame is on its own machine (G_CoopRider*), the host's cgame is this one
 		if ( pEnt->client->ps.stats[STAT_WEAPONS] & (1<<WP_BLASTER) )
 		{
-			CG_ChangeWeapon( WP_BLASTER );
+			G_CoopRiderWeapon( pEnt, WP_BLASTER );
 			//camera
-			if ( cg_gunAutoFirst.integer )
-			{//go back to first person
-				gi.cvar_set( "cg_thirdperson", "0" );
-			}
+			G_CoopRiderViewMode( pEnt, -1 );	//go back to first person, if that player wants it
 		}
 		else
 		{
-			CG_ChangeWeapon( WP_NONE );
+			G_CoopRiderWeapon( pEnt, WP_NONE );
 		}
-		cg.overrides.active &= ~(CG_OVERRIDE_3RD_PERSON_RNG|CG_OVERRIDE_3RD_PERSON_VOF|CG_OVERRIDE_3RD_PERSON_POF|CG_OVERRIDE_3RD_PERSON_APH);
-		cg.overrides.thirdPersonRange = cg.overrides.thirdPersonVertOffset = cg.overrides.thirdPersonPitchOffset = 0;
-		cg.overrides.thirdPersonAlpha = cg_thirdPersonAlpha.value;
+		if ( pEnt->s.number == 0 )
+		{
+			cg.overrides.active &= ~(CG_OVERRIDE_3RD_PERSON_RNG|CG_OVERRIDE_3RD_PERSON_VOF|CG_OVERRIDE_3RD_PERSON_POF|CG_OVERRIDE_3RD_PERSON_APH);
+			cg.overrides.thirdPersonRange = cg.overrides.thirdPersonVertOffset = cg.overrides.thirdPersonPitchOffset = 0;
+			cg.overrides.thirdPersonAlpha = cg_thirdPersonAlpha.value;
+		}
 		pEnt->client->ps.viewheight = pEnt->maxs[2] + STANDARD_VIEWHEIGHT_OFFSET;
 		//pEnt->mass = 10;
 	}
@@ -466,6 +468,10 @@ void G_DriveATST( gentity_t *pEnt, gentity_t *atst )
 			G_SetG2PlayerModelInfo( pEnt, "atst", NULL, NULL, NULL );
 			//turn off hatch underside
 			gi.G2API_SetSurfaceOnOff( &pEnt->ghoul2[pEnt->playerModel], "head_hatchcover", 0x00000002/*G2SURFACEFLAG_OFF*/ );
+			// coop: a copied ghoul2 goes around G_SetG2PlayerModel, so nothing told the
+			// joiners - they kept drawing the driver's own character (and the joiner at
+			// the controls saw no walker at all)
+			G_CoopRecordModel( pEnt, "atst", NULL, "head_hatchcover", NULL );
 			G_Sound( pEnt, G_SoundIndex( "sound/chars/atst/atst_hatch_close" ));
 		}
 		pEnt->s.radius = 320;
@@ -479,7 +485,7 @@ void G_DriveATST( gentity_t *pEnt, gentity_t *atst )
 		pEnt->client->ps.stats[STAT_WEAPONS] |= ( 1 << WP_ATST_MAIN )|( 1 << WP_ATST_SIDE );
 		pEnt->client->ps.ammo[weaponData[WP_ATST_MAIN].ammoIndex] = ammoData[weaponData[WP_ATST_MAIN].ammoIndex].max;
 		pEnt->client->ps.ammo[weaponData[WP_ATST_SIDE].ammoIndex] = ammoData[weaponData[WP_ATST_SIDE].ammoIndex].max;
-		CG_ChangeWeapon( WP_ATST_MAIN );
+		G_CoopRiderWeapon( pEnt, WP_ATST_MAIN );	// coop: the driver's cgame
 		//HACKHACKHACKTEMP
 		item = FindItemForWeapon( WP_EMPLACED_GUN );
 		CG_RegisterItemSounds( (item-bg_itemlist) );
@@ -493,9 +499,12 @@ void G_DriveATST( gentity_t *pEnt, gentity_t *atst )
 		//HACKHACKHACKTEMP
 		//FIXME: these get lost in load/save!  Must use variables that are set every frame or saved/loaded
 		//camera
-		gi.cvar_set( "cg_thirdperson", "1" );
-		cg.overrides.active |= CG_OVERRIDE_3RD_PERSON_RNG;
-		cg.overrides.thirdPersonRange = 240;
+		G_CoopRiderViewMode( pEnt, 1 );	// coop: the driver's view
+		if ( pEnt->s.number == 0 )
+		{	// a joiner's cgame backs off by itself on EF_IN_ATST (CG_CalcIdealThirdPersonViewLocation)
+			cg.overrides.active |= CG_OVERRIDE_3RD_PERSON_RNG;
+			cg.overrides.thirdPersonRange = 240;
+		}
 		//cg.overrides.thirdPersonVertOffset = 100;
 		//cg.overrides.thirdPersonPitchOffset = -30;
 		//FIXME: this gets stomped in pmove?

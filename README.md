@@ -70,19 +70,21 @@ language. On the first launch of a bilingual version it follows the language of 
 |---|---|
 | **HOST** | Opens the lobby; your friends join you. **NEW GAME**: pick the difficulty and your character, then each guest creates theirs and the game starts once everyone has confirmed (or **START** without waiting). **CONTINUE**: load a saved game, everyone gets their character and progress back. |
 | **JOIN** | Games on the local network, or the host's `IP:PORT` (Internet). |
-| **CO-OP OPTIONS** | Name, revive key, field of view, and the host's game settings (max players: 2 to 16). |
+| **CO-OP OPTIONS** | Name, revive key, co-op menu key, field of view, and the host's game settings (max players: 2 to 16). |
 
 You can also play solo and open the game to friends at any time: **F6 > OPEN TO FRIENDS**.
 
 - `Rejoindre.cmd` (= `JACoop.exe join`) goes straight to JOIN; `Rejoindre.cmd ADDRESS` joins that host.
 - `Solo.cmd` (= `JACoop.exe solo`) plays the classic single player with this engine, no network.
 - **F6** in game: lobby / players, character / skin, lightsaber, Force points (guests),
-  bring the guests / go to the host (rescue teleport), NPC spawner (host), options.
+  bring the guests / go to the host (rescue teleport), NPC spawner (host), options. F6 is only
+  the default (and only if the key was free): change it in CO-OP OPTIONS > PLAYER.
 
 **Downed / revive (G key)**: a fatal blow puts you down instead of killing you (60 s of bleeding
 out). A teammate gets close and holds **G** for 3 s to bring you back with 40 % health; a red marker
 shows where you are. Without help you really die and come back 10 s later next to a teammate who is
-standing. If everyone is down, the last checkpoint reloads (by itself after 20 s). All of it is set
+standing; hold **JUMP** on the ground to give up without waiting. While dead, the camera follows a
+teammate (mouse to look around, attack for the next one). If everyone is down, the last checkpoint reloads (by itself after 20 s). All of it is set
 in CO-OP OPTIONS > HOST.
 
 ## Features
@@ -160,6 +162,10 @@ lot (`JACoop\base\qconsole.log`, overwritten at each launch: copy it before rest
     some of the new player slots: up to 4 players until the next level, then 16.
 13. **16 players** was tested with 6 on one machine; beyond, the host's upload and CPU are the limit,
     and the single-player levels (lifts, doors, cutscenes) get crowded.
+14. **A guest driving an AT-ST does not see their own walker** on their screen (the others do, and
+    the camera, weapons and controls work).
+15. **A campaign saved with an older version after skipping Vjun** keeps its story counter one step
+    ahead: the old versions skipped academy4 and Vjun when all five hub 2 missions were done.
 
 ## Building
 
@@ -226,19 +232,21 @@ autres langues. Au premier lancement d'une version bilingue, il suit la langue d
 |---|---|
 | **HEBERGER** | Ouvre le salon ; tes amis te rejoignent. **NOUVELLE PARTIE** : tu choisis la difficulté et ton personnage, puis chaque invité crée le sien et la partie démarre quand tous ont validé (ou **COMMENCER** sans attendre). **CONTINUER** : charger une sauvegarde, chacun retrouve son personnage et sa progression. |
 | **REJOINDRE** | Parties du réseau local, ou l'`IP:PORT` de l'hôte (Internet). |
-| **OPTIONS COOPERATION** | Pseudo, touche pour relever, champ de vision, et les réglages de partie de l'hôte (joueurs max : 2 à 16). |
+| **OPTIONS COOPERATION** | Pseudo, touche pour relever, touche du menu coop, champ de vision, et les réglages de partie de l'hôte (joueurs max : 2 à 16). |
 
 Tu peux aussi jouer en solo et ouvrir la partie aux amis à tout moment : **F6 > OUVRIR AUX AMIS**.
 
 - `Rejoindre.cmd` (= `JACoop.exe join`) va droit à REJOINDRE ; `Rejoindre.cmd ADRESSE` rejoint cet hôte.
 - `Solo.cmd` (= `JACoop.exe solo`) : le solo classique avec ce moteur, sans réseau.
-- **F6** en jeu : salon / joueurs, personnage / skin, sabre laser, points de Force (invités),
+- **F6** en jeu (touche par défaut, si elle était libre ; elle se change dans OPTIONS COOPERATION >
+  JOUEUR) : salon / joueurs, personnage / skin, sabre laser, points de Force (invités),
   ramener les invités / rejoindre l'hôte (téléportation de secours), PNJ (hôte), options.
 
 **À terre / relever (touche G)** : un coup mortel met à terre au lieu de tuer (60 s de saignement).
 Un coéquipier s'approche et maintient **G** 3 s pour te relever avec 40 % de vie ; un marqueur rouge
 montre où tu es. Sans secours, tu meurs vraiment et tu reviens 10 s plus tard à côté d'un coéquipier
-debout. Si tout le monde est à terre, le dernier point de contrôle se recharge (tout seul après 20 s).
+debout ; maintenir **SAUT** à terre abandonne sans attendre. Mort, la caméra suit un coéquipier
+(souris pour tourner autour, tir pour passer au suivant). Si tout le monde est à terre, le dernier point de contrôle se recharge (tout seul après 20 s).
 Tout se règle dans OPTIONS COOPERATION > HOTE.
 
 ## Fonctionnalités
@@ -319,6 +327,11 @@ beaucoup (`JACoop\base\qconsole.log`, écrasé à chaque lancement : le copier a
     son niveau garde certaines des nouvelles places de joueur : 4 joueurs jusqu'au niveau suivant, puis 16.
 13. **16 joueurs** : testé à 6 sur une seule machine ; au-delà, le débit montant et le processeur de
     l'hôte sont la limite, et les niveaux solo (ascenseurs, portes, cinématiques) deviennent encombrés.
+14. **Un invité aux commandes d'un AT-ST ne voit pas son propre marcheur** à l'écran (les autres le
+    voient ; caméra, armes et commandes fonctionnent).
+15. **Une campagne sauvegardée avec une ancienne version après avoir sauté Vjun** garde son compteur
+    d'histoire un cran trop loin : les anciennes versions sautaient l'académie 4 et Vjun quand les
+    cinq missions du palier 2 étaient faites.
 
 ## Compiler
 

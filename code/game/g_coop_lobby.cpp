@@ -270,7 +270,57 @@ static int G_CoopAllocTotal( const playerState_t *ps )
 	return total;
 }
 
-// force points a joiner can still spend (host's allocatable total minus its own)
+// The joiners' budget is the host's allocatable total. At the end of a mission
+// though everybody sits on the force screen at the same time, and a joiner that
+// spent its point before the host did was told "too many points" and had to do
+// it again in the middle of the next mission (a player's review, 29/09). So the
+// loadout that follows a mission choice grants the point to everybody at once:
+// the budget is at least the host's total then, plus one, for as long as the
+// host keeps at least that total (an older save loaded takes the grant away).
+static int	coopForceGrant = 0;			// budget handed out by an end-of-mission loadout
+static int	coopForceGrantHost = 0;		// the host's own total at that moment
+static qboolean	coopForceCheat[MAX_CLIENTS];	// setForce*: that joiner is beyond the budget on purpose
+
+void G_CoopForceGrantPoint( void )
+{
+	const gclient_t *host = g_entities[0].client;
+	if ( !host )
+	{
+		return;
+	}
+	coopForceGrantHost = G_CoopAllocTotal( &host->ps );
+	if ( coopForceGrant < coopForceGrantHost + 1 )
+	{
+		coopForceGrant = coopForceGrantHost + 1;
+	}
+	gi.Printf( "coop: end of mission, force budget %i for everybody (host has spent %i)\n", coopForceGrant, coopForceGrantHost );
+}
+
+static int G_CoopForceBudget( void )
+{
+	const gclient_t *host = g_entities[0].client;
+	if ( !host )
+	{
+		return 0;
+	}
+	const int hostTotal = G_CoopAllocTotal( &host->ps );
+	if ( coopForceGrant > hostTotal && hostTotal >= coopForceGrantHost )
+	{
+		return coopForceGrant;
+	}
+	return hostTotal;
+}
+
+// a cheat (setForce*, setSaberAll) put this joiner above the budget: keep it there
+void G_CoopForceCheated( const gentity_t *ent )
+{
+	if ( ent && ent->s.number > 0 && ent->s.number < MAX_CLIENTS )
+	{
+		coopForceCheat[ent->s.number] = qtrue;
+	}
+}
+
+// force points a joiner can still spend (the budget minus its own)
 int G_CoopForcePointsAvailable( const gentity_t *ent )
 {
 	const gclient_t *host = g_entities[0].client;
@@ -278,7 +328,7 @@ int G_CoopForcePointsAvailable( const gentity_t *ent )
 	{
 		return 0;
 	}
-	return G_CoopAllocTotal( &host->ps ) - G_CoopAllocTotal( &ent->client->ps );
+	return G_CoopForceBudget() - G_CoopAllocTotal( &ent->client->ps );
 }
 
 static void G_CoopSyncForce( gentity_t *ent )
@@ -327,7 +377,7 @@ static void G_CoopSyncForce( gentity_t *ent )
 	}
 
 	// the host may have loaded an older save: never keep more points than it has
-	int over = -G_CoopForcePointsAvailable( ent );
+	int over = coopForceCheat[ent->s.number] ? 0 : -G_CoopForcePointsAvailable( ent );
 	for ( int fp = NUM_FORCE_POWERS - 1; over > 0 && fp >= 0; fp-- )
 	{
 		if ( ( COOP_ALLOC_MASK & ( 1 << fp ) ) && ps->forcePowerLevel[fp] > 0 )
@@ -370,7 +420,7 @@ void G_CoopForceCommand( gentity_t *ent )
 			total += levels[fp];
 		}
 	}
-	if ( total > G_CoopAllocTotal( &host->ps ) )
+	if ( total > G_CoopForceBudget() && !coopForceCheat[ent->s.number] )
 	{
 		G_CoopPrintTr( ent->s.number, "print", "^1Trop de points de Force demandes.\n", "^1Too many Force points asked for.\n" );
 		return;
@@ -393,7 +443,7 @@ void G_CoopForceCommand( gentity_t *ent )
 		}
 	}
 	G_CoopStoreState( ent );
-	gi.Printf( "coop: %s allocated its force points (%i of %i)\n", ent->client->pers.netname, total, G_CoopAllocTotal( &host->ps ) );
+	gi.Printf( "coop: %s allocated its force points (%i of %i)\n", ent->client->pers.netname, total, G_CoopForceBudget() );
 }
 
 /*
@@ -422,6 +472,8 @@ void G_CoopLobbyInit( void )
 	if ( !carry[0] )
 	{
 		coopNumSaved = 0;
+		coopForceGrant = coopForceGrantHost = 0;
+		memset( coopForceCheat, 0, sizeof( coopForceCheat ) );
 	}
 }
 

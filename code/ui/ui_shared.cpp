@@ -5754,6 +5754,7 @@ static const char *g_bindCommands[] = {
 	"save quick",
 #endif
 	"taunt",
+	"uimenu coopMenu",	// coop: the co-op menu (F6 by default, Key_CoopDefaultBinds), rebindable
 	"uimenu ingameloadmenu",
 	"uimenu ingamesavemenu",
 	"use_bacta",

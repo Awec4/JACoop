@@ -3945,8 +3945,12 @@ qboolean G_CheckClampUcmd( gentity_t *ent, usercmd_t *ucmd )
 		}
 		overridAngles = (PM_LockAngles( ent, ucmd )?qtrue:overridAngles);
 	}
-	else if ( G_CoopIsPlayer( ent ) )
-	{
+	else if ( ent->s.number == 0 )
+	{	// coop: cg.overrides is the HOST's camera. With G_CoopIsPlayer here, every
+		// joiner on foot wiped the host's AT-ST camera range each frame while the
+		// host drove one: the view jumped between 240 and the normal distance
+		// (a review, 29/09: "AT-STs had heavy camera glitching"). A joiner's cgame
+		// manages its own camera.
 		if ( ent->client->NPC_class != CLASS_ATST )
 		{
 			// Not in a vehicle.

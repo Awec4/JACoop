@@ -2971,8 +2971,8 @@ extern void SetClientViewAngle( gentity_t *ent, vec3_t angle );
 extern qboolean PM_InSlopeAnim( int anim );
 void misc_atst_use( gentity_t *self, gentity_t *other, gentity_t *activator )
 {
-	if ( !activator || activator->s.number )
-	{//only player can do this
+	if ( !activator || !G_CoopIsPlayer( activator ) )
+	{//only player can do this	// coop: any player (G_DriveATST switches that player's own weapon and view)
 		return;
 	}
 
@@ -2981,7 +2981,18 @@ void misc_atst_use( gentity_t *self, gentity_t *other, gentity_t *activator )
 
 	if ( activator->client->NPC_class != CLASS_ATST )
 	{//get in the ATST
-		if ( activator->client->ps.groundEntityNum != self->s.number )
+		qboolean onTop = (qboolean)( activator->client->ps.groundEntityNum == self->s.number );
+		if ( !onTop && activator->s.number != 0 )
+		{	// coop: the host never sees a joiner's groundEntityNum (it stays ENTITYNUM_NONE):
+			// look under its feet instead
+			trace_t	tr;
+			vec3_t	down;
+			VectorCopy( activator->currentOrigin, down );
+			down[2] -= 24.0f;
+			gi.trace( &tr, activator->currentOrigin, activator->mins, activator->maxs, down, activator->s.number, MASK_PLAYERSOLID, (EG2_Collision)0, 0 );
+			onTop = (qboolean)( tr.entityNum == self->s.number );
+		}
+		if ( !onTop )
 		{//can only get in if on top of me...
 			//we *could* even check for the hatch surf...?
 			return;
@@ -3013,10 +3024,8 @@ void misc_atst_use( gentity_t *self, gentity_t *other, gentity_t *activator )
 			activator->locationDamage[hl] = self->locationDamage[hl];
 			self->locationDamage[hl] = tempLocDmg[hl];
 		}
-		if ( G_CoopIsPlayer( self ) )
-		{
-			CG_CenterPrint( "@SP_INGAME_EXIT_VIEW", SCREEN_HEIGHT * 0.95 );
-		}
+		G_CoopRiderCenterPrint( activator, "@SP_INGAME_EXIT_VIEW", 0.95f );	// coop: the driver's screen (the test was on the walker, never a player)
+		gi.Printf( "coop: %s drives the AT-ST %i\n", activator->client->pers.netname, self->s.number );
 	}
 	else
 	{//get out of ATST

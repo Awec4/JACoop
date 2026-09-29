@@ -376,7 +376,17 @@ static void CG_CalcIdealThirdPersonViewTarget(void)
 	}
 
 	// Add in the new viewheight
-	cameraFocusLoc[2] += cg.predicted_player_state.viewheight;
+	// coop: the playerState carries viewheight on 8 signed bits (msg.cpp, -8):
+	// an AT-ST's 244 (standheight + offset, set by PM_CheckDuck) reaches the
+	// cgame as -12, and the driving camera aimed at the walker's feet, from knee
+	// height - what a review called "heavy camera glitching". Nothing else goes
+	// that high, so unwrap it here rather than change the network format.
+	int viewHeight = cg.predicted_player_state.viewheight;
+	if ( ( cg.snap->ps.eFlags & EF_IN_ATST ) && viewHeight < 0 )
+	{
+		viewHeight += 256;
+	}
+	cameraFocusLoc[2] += viewHeight;
 	if ( cg.snap
 		&& (cg.snap->ps.eFlags&EF_HELD_BY_SAND_CREATURE) )
 	{
@@ -438,6 +448,12 @@ static void CG_CalcIdealThirdPersonViewLocation(void)
 	if ( cg.overrides.active & CG_OVERRIDE_3RD_PERSON_RNG )
 	{
 		VectorMA(cameraIdealTarget, -(cg.overrides.thirdPersonRange), camerafwd, cameraIdealLoc);
+	}
+	else if ( cg.snap && (cg.snap->ps.eFlags&EF_IN_ATST) )
+	{	// coop: G_DriveATST sets this override in the host's cgame only: a joiner at
+		// the controls (or a host after a load, see its FIXME) kept the camera at a
+		// man's distance, inside the walker's own model
+		VectorMA(cameraIdealTarget, -240.0f, camerafwd, cameraIdealLoc);
 	}
 	else if ( cg.snap
 		&& (cg.snap->ps.eFlags&EF_HELD_BY_RANCOR)
@@ -1759,6 +1775,10 @@ static qboolean CG_CalcViewValues( void ) {
 	CGCam_UpdateSmooth( cg.refdef.vieworg, cg.refdefViewAngles );
 	CGCam_UpdateShake( cg.refdef.vieworg, cg.refdefViewAngles );
 
+	// coop: dead and waiting for the respawn - watch a teammate instead of our body
+	extern qboolean CG_CoopSpectate( vec3_t org, vec3_t angles );
+	CG_CoopSpectate( cg.refdef.vieworg, cg.refdefViewAngles );
+
 	/*
 	if ( in_camera )
 	{
@@ -2148,6 +2168,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView ) {
 		|| (cg.snap->ps.stats[STAT_HEALTH] <= 0)
 		|| (cg.snap->ps.stats[STAT_COOP_DOWN] > 0)	// coop: on the ground, see the teammate coming
 		|| (cg.snap->ps.eFlags&EF_HELD_BY_SAND_CREATURE)
+		|| (cg.snap->ps.eFlags&EF_IN_ATST)	// coop: a joiner's placeholder has no NPC_class
 		|| ((g_entities[cg_localEntNum].client&&g_entities[cg_localEntNum].client->NPC_class==CLASS_ATST)
 		|| (cg.snap->ps.weapon == WP_SABER || cg.snap->ps.weapon == WP_MELEE) ));
 

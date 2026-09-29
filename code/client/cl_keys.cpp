@@ -978,22 +978,50 @@ int Key_GetKey( const char *binding ) {
 ===================
 Key_CoopDefaultBinds
 
-coop: first run (or an old config): the revive key goes on G when nothing
-else is bound to +coop_revive and G is free.
+coop: first run (or an old config): the revive key goes on G and the co-op
+menu on F6, each when nothing is bound to that command yet and the key is
+free. Once per install (coop_bindsInit, archived), never again: a key the
+player unbound or took for something else stays his. The co-op menu used to
+be "bind F6" in jacoop.cfg, run at every launch, so F6 could be nothing else
+(a review, 29/09: "F6 is my Force Grip key"); it is a bindable command now
+(OPTIONS COOPERATION > JOUEUR, g_bindCommands in ui_shared.cpp).
 ===================
 */
-void Key_CoopDefaultBinds( void )
+static void Key_CoopDefaultBind( const char *keyName, const char *command )
 {
-	if ( Key_GetKey( "+coop_revive" ) >= 0 )
+	if ( Key_GetKey( command ) >= 0 )
 	{
-		return;
+		return;		// already on a key
 	}
-	char name[2] = { 'g', 0 };
+	char name[16];
+	Q_strncpyz( name, keyName, sizeof( name ) );	// Key_StringToKeynum takes a char *
 	const int key = Key_StringToKeynum( name );
 	if ( key >= 0 && ( !kg.keys[key].binding || !kg.keys[key].binding[0] ) )
 	{
-		Key_SetBinding( key, "+coop_revive" );
-		Com_Printf( "coop: G bound to +coop_revive (relever un coequipier)\n" );
+		Key_SetBinding( key, command );
+		Com_Printf( "coop: %s bound to %s\n", keyName, command );
+	}
+	else
+	{
+		Com_Printf( "coop: %s is taken, %s left unbound (OPTIONS COOPERATION > JOUEUR)\n", keyName, command );
+	}
+}
+
+void Key_CoopDefaultBinds( void )
+{
+	cvar_t *done = Cvar_Get( "coop_bindsInit", "0", CVAR_ARCHIVE );
+
+	if ( !( done->integer & 1 ) )
+	{
+		Key_CoopDefaultBind( "g", "+coop_revive" );
+	}
+	if ( !( done->integer & 2 ) )
+	{
+		Key_CoopDefaultBind( "F6", "uimenu coopMenu" );
+	}
+	if ( ( done->integer & 3 ) != 3 )
+	{
+		Cvar_Set( "coop_bindsInit", "3" );
 	}
 }
 
