@@ -29,6 +29,8 @@ Jouer
 
   F6 en jeu : salon / joueurs, personnage / skin, points de Force (invités),
   ramener les invités / rejoindre l'hôte (téléportation de secours), options.
+  F6 n'est que la touche par défaut (et seulement si elle était libre) : elle
+  se change dans OPTIONS COOPERATION > JOUEUR.
 
 À terre / relever (touche G)
 ----------------------------
@@ -36,7 +38,9 @@ Jouer
   « saignement »). Un coéquipier s'approche et maintient G (touche modifiable
   dans OPTIONS COOPERATION) 3 s pour le relever avec 40 % de vie. Un marqueur
   rouge indique où il est. Sans secours, il meurt vraiment et réapparaît 10 s
-  plus tard à côté d'un coéquipier debout. Si tout le monde est à terre,
+  plus tard à côté d'un coéquipier debout ; à terre, maintenir SAUT abandonne
+  sans attendre. Mort, la caméra suit un coéquipier (souris pour tourner
+  autour, tir pour passer au suivant). Si tout le monde est à terre,
   l'hôte se voit proposer de RECHARGER LE DERNIER POINT DE CONTROLE (rechargé
   tout seul après 20 s). Tout cela se règle dans OPTIONS COOPERATION (ou se
   désactive : Joueurs à terre = Non, retour à la réapparition simple).

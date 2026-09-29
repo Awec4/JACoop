@@ -504,6 +504,9 @@ LANG_ENGLISH        "Marked"
 REFERENCE           MATIERES_DU_DECOR
 LANG_ENGLISH        "SCENERY MATERIALS"
 
+REFERENCE           MENU_COOP_TOUCHE
+LANG_ENGLISH        "Co-op menu (key):"
+
 REFERENCE           MISSIONS_DISPONIBLES
 LANG_ENGLISH        "AVAILABLE MISSIONS"
 
@@ -923,6 +926,9 @@ LANG_ENGLISH        "Your name, as the other players see it (lobby, messages)."
 
 REFERENCE           TOUCHE_A_MAINTENIR_PRES_D_UN_COEQUIPIER
 LANG_ENGLISH        "Key to hold next to a downed teammate to revive them (G by default)."
+
+REFERENCE           TOUCHE_QUI_OUVRE_LE_MENU_COOPERATION_EN
+LANG_ENGLISH        "Key that opens the CO-OP menu in game (F6 by default if it was free)."
 
 REFERENCE           TOUS_A_TERRE_LE_DERNIER_POINT_DE_CONTROL
 LANG_ENGLISH        "Everyone down: the last checkpoint reloads by itself after this delay."

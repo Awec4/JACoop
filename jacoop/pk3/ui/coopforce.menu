@@ -2520,11 +2520,11 @@
 			mouseExit 
 			{ 
 			}
+			// coop: the weapons screen at the end of a mission, else back where we came from
 			action
 			{
 				play		"sound/interface/menuroam.wav"
-				close		all
-				open		coopLobby
+				uiScript	coopForceWeapons
 			}
 		}
 

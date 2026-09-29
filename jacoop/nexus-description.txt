@@ -1,0 +1,107 @@
+[size=5][b]JACoop — the Jedi Academy campaign in co-op, 2 to 16 players[/b][/size]
+
+Play the whole single-player campaign of Star Wars Jedi Knight: Jedi Academy together. One player hosts, the others join: same world, same missions, each with their own character, lightsaber, Force powers and progress. Built on the open-source OpenJK engine, the mod is a standalone folder: it never touches the original game or its saves. English and French.
+
+[size=4][b]Co-op features[/b][/size]
+[list]
+[*][b]The whole campaign in co-op[/b]: enemies target every player; triggers, doors, levers, puzzles and scripts react to every player; level changes, the mission map with a vote on the next mission, the loadout screen; cutscenes and videos shown to everybody.
+[*][b]2 to 16 players[/b]: the host picks the maximum in the options. LAN, VPN (Hamachi, ZeroTier, Radmin) or Internet with UDP port 29070 opened on the host.
+[*][b]Each player keeps their own progress[/b]: Force powers, weapons, ammo and inventory are kept with the host's save and given back on reconnect or load. Guests spend their own Force points.
+[*][b]Downed & revive[/b]: a fatal blow puts you down instead of killing you; a teammate holds [b]G[/b] to bring you back. Falling into a pit no longer reloads the game for everyone.
+[*][b]Any character or skin[/b], including mod skins (MP or SP), with a 3D preview, changed live even in game.
+[*][b]Lightsabers[/b]: single, staff or dual, every installed hilt (saber packs included), free RGB blade colour.
+[*][b]Mods travel by themselves[/b]: skin and saber .pk3 files are shared through the lobby, in both directions.
+[*][b]NPC spawner[/b] for the host, with a 3D preview.
+[*][b]Join in progress[/b], or open your single-player game to friends at any time (F6).
+[*][b]English and French[/b]: each player reads the menus and messages in their own language.
+[/list]
+
+[size=4][b]Modern engine — all optional[/b][/size]
+[list]
+[*][b]Widescreen and ultrawide[/b] (Hor+ field of view), menus and HUD kept in proportion; the crosshair lands exactly where the shot goes.
+[*][b]New HUD[/b] in the spirit of Jedi: Fallen Order (health, shield, Force, weapon, saber stance).
+[*][b]Software ray tracing[/b] on any OpenGL 4.3 card — no RTX needed: soft sun shadows, true occlusion, per-pixel lights with shadows (saber blades light the scene [b]with their colour[/b]), reflections on shiny surfaces and glass, water with ripples and refraction, glowing lava, texture relief.
+[*][b]Ragdoll corpses[/b] when pushed or pulled with the Force, optionally synced between players.
+[/list]
+Off, the game draws exactly like the original. Everything is set in [b]CO-OP OPTIONS[/b].
+
+[size=4][b]Install[/b][/size]
+[list=1]
+[*]You need your own copy of Jedi Academy (Steam or GOG, PC).
+[*]Unzip [b]JACoop-*.zip[/b] anywhere. It is a standalone folder: nothing is written into the game's folder.
+[*]Start [b]JACoop.exe[/b]. It finds Jedi Academy by itself; otherwise it asks for the game's GameData folder.
+[*]Main menu > [b]CO-OP[/b] > [b]HOST[/b] or [b]JOIN[/b].
+[/list]
+Everybody in a party must run the [b]same version[/b]. To update, unzip the new version over the old one.
+
+[size=4][b]Known issues[/b][/size]
+[list]
+[*]A guest sometimes loses their lightsaber after a Force push or pull while holding another weapon — not reproduced yet; please send the qconsole.log of both players (JACoop\base) if it happens.
+[*]A guest can get stuck in guard stance until someone hits them.
+[*]A guest who joins during a level's opening cutscene can freeze it for the host: join once it's over.
+[*]Ambient occlusion is heavy on some graphics cards at high resolution.
+[*]Only the host saves and loads.
+[*]Saves from before the 16-player version play with up to 4 players until the next level.
+[*]No kick and no password for the lobby.
+[/list]
+Full list on GitHub.
+
+[b]Note[/b]: the executables are unsigned and freshly built; Windows Defender sometimes flags them as a false positive. Add an exclusion on the JACoop folder if that happens.
+
+Source code, documentation and releases: [url=https://github.com/Parricidium/JACoop]github.com/Parricidium/JACoop[/url] — GPLv2, based on OpenJK. Made with Claude (Anthropic).
+If you enjoy it: [url=https://ko-fi.com/parricidium]Ko-fi[/url] ❤️
+
+[size=4][b]Version française[/b][/size]
+
+[b]JACoop — la campagne de Jedi Academy en coopération, de 2 à 16 joueurs.[/b]
+
+Jouez toute la campagne solo de Star Wars Jedi Knight: Jedi Academy ensemble. Un joueur héberge, les autres le rejoignent : même monde, mêmes missions, chacun avec son personnage, son sabre laser, ses pouvoirs de Force et sa progression. Basé sur le moteur libre OpenJK, le mod est un dossier autonome : il ne touche jamais au jeu d'origine ni à ses sauvegardes. Anglais et français.
+
+[size=4][b]Coopération[/b][/size]
+[list]
+[*][b]Toute la campagne en coop[/b] : les ennemis visent tous les joueurs ; déclencheurs, portes, leviers, énigmes et scripts réagissent à tous ; changements de niveau, carte des missions avec vote de la suivante, écran d'équipement ; cinématiques et vidéos montrées à tout le monde.
+[*][b]De 2 à 16 joueurs[/b] : l'hôte choisit le maximum dans les options. Réseau local, VPN (Hamachi, ZeroTier, Radmin) ou Internet avec le port UDP 29070 ouvert chez l'hôte.
+[*][b]Chacun garde sa progression[/b] : pouvoirs de Force, armes, munitions et inventaire sont gardés avec la sauvegarde de l'hôte et rendus à la reconnexion ou au chargement. Les invités répartissent leurs propres points de Force.
+[*][b]À terre / relever[/b] : un coup mortel met à terre au lieu de tuer ; un coéquipier maintient [b]G[/b] pour vous relever. Une chute dans le vide ne recharge plus la partie de tout le monde.
+[*][b]N'importe quel personnage ou skin[/b], skins de mods compris (MP ou SP), avec aperçu 3D, changé en direct même en pleine partie.
+[*][b]Sabres laser[/b] : simple, double lame ou deux sabres, tous les manches installés (packs compris), couleur de lame RVB libre.
+[*][b]Les mods voyagent tout seuls[/b] : les .pk3 de skins et de sabres passent par le salon, dans les deux sens.
+[*][b]Apparition de PNJ[/b] pour l'hôte, avec aperçu 3D.
+[*][b]Rejoindre en cours de partie[/b], ou ouvrir sa partie solo aux amis à tout moment (F6).
+[*][b]Anglais et français[/b] : chaque joueur lit les menus et les messages dans sa langue.
+[/list]
+
+[size=4][b]Moteur modernisé — tout en option[/b][/size]
+[list]
+[*][b]Écran large et ultra-large[/b] (champ de vision Hor+), menus et ATH en proportions ; le réticule tombe exactement où part le tir.
+[*][b]Nouvel ATH[/b] dans l'esprit de Jedi: Fallen Order (vie, bouclier, Force, arme, style de sabre).
+[*][b]Ray tracing logiciel[/b] sur toute carte OpenGL 4.3 — pas besoin de RTX : ombres douces du soleil, occlusion vraie, lumières par pixel avec ombres (les lames de sabre éclairent la scène [b]de leur couleur[/b]), reflets sur les surfaces brillantes et le verre, eau avec ondulations et réfraction, lave lumineuse, relief des textures.
+[*][b]Cadavres en ragdoll[/b] quand on les pousse ou les tire avec la Force, synchronisés en option entre les joueurs.
+[/list]
+Éteint, le jeu dessine exactement comme l'original. Tout se règle dans [b]OPTIONS COOPERATION[/b].
+
+[size=4][b]Installation[/b][/size]
+[list=1]
+[*]Il faut posséder Jedi Academy (Steam ou GOG, PC).
+[*]Décompressez [b]JACoop-*.zip[/b] où vous voulez. C'est un dossier autonome : rien n'est écrit dans le dossier du jeu.
+[*]Lancez [b]JACoop.exe[/b]. Il trouve Jedi Academy tout seul ; sinon il demande le dossier GameData du jeu.
+[*]Menu principal > [b]COOPERATION[/b] > [b]HEBERGER[/b] ou [b]REJOINDRE[/b].
+[/list]
+Tout le monde doit avoir la [b]même version[/b]. Pour mettre à jour, décompressez la nouvelle version par-dessus l'ancienne.
+
+[size=4][b]Bugs connus[/b][/size]
+[list]
+[*]Un invité perd parfois son sabre après une poussée ou un tirage de Force alors qu'il tient une autre arme — pas encore reproduit ; envoyez les qconsole.log des deux joueurs (JACoop\base) si ça arrive.
+[*]Un invité peut rester bloqué en garde jusqu'à ce qu'on le frappe.
+[*]Un invité qui rejoint pendant la cinématique d'ouverture d'un niveau peut la figer chez l'hôte : rejoindre une fois qu'elle est finie.
+[*]L'occlusion ambiante est lourde sur certaines cartes graphiques en haute résolution.
+[*]Seul l'hôte sauvegarde et charge.
+[*]Les sauvegardes d'avant la version 16 joueurs se jouent à 4 au maximum jusqu'au niveau suivant.
+[*]Pas d'exclusion ni de mot de passe pour le salon.
+[/list]
+Liste complète sur GitHub.
+
+[b]Note[/b] : les exécutables ne sont pas signés et fraîchement compilés ; Windows Defender les signale parfois à tort. Ajoutez une exclusion sur le dossier JACoop si ça arrive.
+
+Code source, documentation et versions : [url=https://github.com/Parricidium/JACoop]github.com/Parricidium/JACoop[/url] — GPLv2, basé sur OpenJK. Fait avec Claude (Anthropic).
+Si le mod vous plaît : [url=https://ko-fi.com/parricidium]Ko-fi[/url] ❤️

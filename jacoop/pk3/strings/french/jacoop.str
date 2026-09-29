@@ -671,6 +671,10 @@ REFERENCE           MATIERES_DU_DECOR
 LANG_ENGLISH        "SCENERY MATERIALS"
 LANG_FRENCH         "MATIERES DU DECOR"
 
+REFERENCE           MENU_COOP_TOUCHE
+LANG_ENGLISH        "Co-op menu (key):"
+LANG_FRENCH         "Menu coop (touche) :"
+
 REFERENCE           MISSIONS_DISPONIBLES
 LANG_ENGLISH        "AVAILABLE MISSIONS"
 LANG_FRENCH         "MISSIONS DISPONIBLES"
@@ -1230,6 +1234,10 @@ LANG_FRENCH         "Ton nom, vu par les autres joueurs (salon, messages)."
 REFERENCE           TOUCHE_A_MAINTENIR_PRES_D_UN_COEQUIPIER
 LANG_ENGLISH        "Key to hold next to a downed teammate to revive them (G by default)."
 LANG_FRENCH         "Touche a maintenir pres d un coequipier a terre pour le relever (G par defaut)."
+
+REFERENCE           TOUCHE_QUI_OUVRE_LE_MENU_COOPERATION_EN
+LANG_ENGLISH        "Key that opens the CO-OP menu in game (F6 by default if it was free)."
+LANG_FRENCH         "Touche qui ouvre le menu COOPERATION en jeu (F6 par defaut si elle etait libre)."
 
 REFERENCE           TOUS_A_TERRE_LE_DERNIER_POINT_DE_CONTROL
 LANG_ENGLISH        "Everyone down: the last checkpoint reloads by itself after this delay."

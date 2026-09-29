@@ -726,9 +726,10 @@ opt = '''// JACoop - OPTIONS COOPERATION (charge au menu principal et en jeu : m
 # --- JOUEUR
 opt += prow_edit('nameField', 'player', 0, 'Pseudo :', 'name', 15, 'Ton nom, vu par les autres joueurs (salon, messages).') \
     + prow_bind('reviveBind', 'player', 1, 'Relever (touche) :', '+coop_revive', 'Touche a maintenir pres d un coequipier a terre pour le relever (G par defaut).') \
-    + prow_multi('cameraLag', 'player', 2, 'Lissage camera :', 'cg_coopCameraLag',
+    + prow_bind('menuBind', 'player', 2, 'Menu coop (touche) :', 'uimenu coopMenu', 'Touche qui ouvre le menu COOPERATION en jeu (F6 par defaut si elle etait libre).') \
+    + prow_multi('cameraLag', 'player', 3, 'Lissage camera :', 'cg_coopCameraLag',
                  [('Aucun', 0), ('Leger', 50), ('Normal', 100), ('Fort', 200)], 'Retard de la camera des cinematiques chez les invites (contre les a-coups reseau).') \
-    + prow_multi('fov', 'player', 3, 'Champ de vision :', 'cg_fov',
+    + prow_multi('fov', 'player', 4, 'Champ de vision :', 'cg_fov',
                  [('80 (normal)', 80), ('90', 90), ('100', 100), ('110', 110), ('120', 120)],
                  'Valeur de reference en 4/3 : sur un ecran large elle est elargie toute seule, tu n as rien a compenser.')
 # --- HOTE
@@ -1195,7 +1196,7 @@ loadout = '''// JACoop - FIN DE MISSION : equipement de chacun avant le depart, 
     + label('missionLabel', (0, 66, 640, 16), 'PROCHAINE MISSION', 0.6, GOLD, 'CENTER') \
     + label('missionName', (0, 84, 640, 26), '', 0.95, TITLE, 'CENTER', cvar='ui_coopEndTitle') \
     + colbutton('forceButton', 150, 'POUVOIRS DE FORCE', '\t\t\t\tsetcvar\t\t\tui_coopForceFrom endlevel ;\n\t\t\t\tclose\t\t\tall ;\n\t\t\t\topen\t\t\tcoopForceSelect\n',
-                'Depenser ton point de Force avant de partir.') \
+                'Depenser ton point de Force avant de partir.', 'ui_coopEndForcePoint', show=['1']) \
     + colbutton('wpnButton', 190, 'ARMES', '\t\t\t\tclose\t\t\tall ;\n\t\t\t\topen\t\t\tcoopWpnSelect\n',
                 'Choisir deux armes et un explosif pour la mission.') \
     + colbutton('readyButton', 244, 'PRET / PAS PRET', '\t\t\t\tuiScript\t\tcoopEndReady\n',

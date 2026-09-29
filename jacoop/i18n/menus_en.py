@@ -186,6 +186,8 @@ EN = {
     'Ton nom, vu par les autres joueurs (salon, messages).': 'Your name, as the other players see it (lobby, messages).',
     'Relever (touche) :': 'Revive (key):',
     'Touche a maintenir pres d un coequipier a terre pour le relever (G par defaut).': 'Key to hold next to a downed teammate to revive them (G by default).',
+    'Menu coop (touche) :': 'Co-op menu (key):',
+    'Touche qui ouvre le menu COOPERATION en jeu (F6 par defaut si elle etait libre).': 'Key that opens the CO-OP menu in game (F6 by default if it was free).',
     'Lissage camera :': 'Camera smoothing:',
     'Retard de la camera des cinematiques chez les invites (contre les a-coups reseau).': 'Cutscene camera delay for guests (against network stutter).',
     'Champ de vision :': 'Field of view:',

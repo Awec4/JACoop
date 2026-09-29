@@ -106,6 +106,8 @@
 			textstyle			1
 			textalignx			8
 			forecolor			1 1 1 1
+			cvarTest			"ui_coopEndForcePoint"
+			showCvar			{ "1" }
 			visible				1
 			mouseEnter
 			{
