@@ -739,10 +739,15 @@ qboolean G_CoopPlayerDied( gentity_t *self )
 		return qfalse;
 	}
 	G_CoopClearDowned( self );
-	if ( !G_CoopLivingTeammate( self ) && !G_CoopDownedActive() )
+	if ( G_CoopNumPlayers() < 2 )
 	{
-		return qfalse;	// last one standing in a plain game: the stock mission-failed screen
+		return qfalse;	// solo: the stock single-player "You have died" screen
 	}
+	// A co-op death is always a co-op respawn: the player comes back beside a
+	// teammate, and when nobody is left up G_CoopDownedFrame offers the last
+	// checkpoint. The single-player "You have died" screen must never open on a
+	// co-op host: it is terminal (load checkpoint / save / quick load) and used
+	// to strand him there even after the co-op respawn had brought him back.
 	// with downed players the respawn waits for someone to be up again (G_CoopDownedFrame
 	// reloads the checkpoint otherwise)
 	const int delay = ( G_CoopDownedActive() && g_coopRespawnDelay->integer > 0 ) ? g_coopRespawnDelay->integer * 1000 : COOP_RESPAWN_DELAY;
@@ -2756,7 +2761,7 @@ void G_CoopDownedFrame( void )
 		}
 		return;
 	}
-	if ( !G_CoopDownedActive() || in_camera )
+	if ( in_camera )
 	{
 		return;
 	}
@@ -2767,6 +2772,15 @@ void G_CoopDownedFrame( void )
 			coopAllDownTime = 0;
 			gi.SendServerCommand( -1, "coopmenu closeall" );
 		}
+		return;
+	}
+	// a plain co-op game (downed mode off) gets the same safety net: nobody is up
+	// any more, so G_CoopPlayerDied kept the stock death screen closed and this
+	// offers the last checkpoint instead
+	const qboolean coopWipe = (qboolean)( G_CoopDownedActive()
+		|| ( !G_CoopIsLobby() && G_CoopNumPlayers() >= 2 ) );
+	if ( !coopWipe )
+	{
 		return;
 	}
 	if ( !coopAllDownTime )
