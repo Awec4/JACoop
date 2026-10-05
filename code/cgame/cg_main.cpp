@@ -268,6 +268,8 @@ vmCvar_t	cg_shadows;
 vmCvar_t	cg_remoteClientCvar;	// coop: mirrors the engine cg_remoteClient cvar
 vmCvar_t	cg_coopPaksGen;			// coop: mirrors the engine cl_coopPaksGen cvar (pk3 transfer)
 vmCvar_t	cg_coopHud;				// coop: 1 = the JACoop HUD, 0 = the stock hud.menu
+vmCvar_t	cg_chatBox;				// coop: chat line lifetime in ms (0 = hide box)
+vmCvar_t	cg_chatBoxHeight;		// coop: bottom Y of the chat stack
 vmCvar_t	cg_renderToTextureFX;
 vmCvar_t	cg_shadowCullDistance;
 vmCvar_t	cg_footsteps;
@@ -481,6 +483,9 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_remoteClientCvar, "cg_remoteClient", "0", CVAR_ROM },
 	{ &cg_coopPaksGen, "cl_coopPaksGen", "0", CVAR_ROM },
 	{ &cg_coopHud, "cg_coopHud", "1", CVAR_ARCHIVE },
+	// coop: on-screen chat box (same defaults as multiplayer)
+	{ &cg_chatBox, "cg_chatBox", "10000", CVAR_ARCHIVE },
+	{ &cg_chatBoxHeight, "cg_chatBoxHeight", "350", CVAR_ARCHIVE },
 	{ &cg_g2Marks, "cg_g2Marks", "1", CVAR_ARCHIVE },
 	{ &fx_expensivePhysics, "fx_expensivePhysics", "1", CVAR_ARCHIVE },
 	{ &cg_debugHealthBars,	"cg_debugHealthBars",	"0", CVAR_CHEAT },

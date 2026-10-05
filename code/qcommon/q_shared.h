@@ -683,7 +683,9 @@ typedef struct {
 // if none of the catchers are active, bound key strings will be executed
 #define KEYCATCH_CONSOLE	1
 #define	KEYCATCH_UI			2
+#define	KEYCATCH_MESSAGE	4	// coop: in-game chat field (messagemode), same as MP
 
+#define	MAX_SAY_TEXT		150	// coop: chat line length cap (matches MP)
 
 // sound channels
 // channel 0 never willingly overrides

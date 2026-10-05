@@ -135,6 +135,10 @@ REFERENCE           CHAMP_DE_VISION
 LANG_ENGLISH        "Field of view:"
 LANG_FRENCH         "Champ de vision :"
 
+REFERENCE           CHAT_TOUCHE
+LANG_ENGLISH        "Chat (key):"
+LANG_FRENCH         "Chat (touche) :"
+
 REFERENCE           CHANGER_DE_MODELE_OU_DE_SKIN_TOUT_DE_SUI
 LANG_ENGLISH        "Change model or skin right away, even in game."
 LANG_FRENCH         "Changer de modele ou de skin, tout de suite, meme en jeu."
@@ -1183,6 +1187,10 @@ REFERENCE           SALON_JOUEURS
 LANG_ENGLISH        "LOBBY / PLAYERS"
 LANG_FRENCH         "SALON / JOUEURS"
 
+REFERENCE           SAY
+LANG_ENGLISH        "Say:"
+LANG_FRENCH         "Dire :"
+
 REFERENCE           SERRE_16
 LANG_ENGLISH        "Tight (16)"
 LANG_FRENCH         "Serre (16)"
@@ -1234,6 +1242,10 @@ LANG_FRENCH         "Ton nom, vu par les autres joueurs (salon, messages)."
 REFERENCE           TOUCHE_A_MAINTENIR_PRES_D_UN_COEQUIPIER
 LANG_ENGLISH        "Key to hold next to a downed teammate to revive them (G by default)."
 LANG_FRENCH         "Touche a maintenir pres d un coequipier a terre pour le relever (G par defaut)."
+
+REFERENCE           TOUCHE_QUI_OUVRE_LE_CHAT_EN_JEU
+LANG_ENGLISH        "Key that opens in-game chat (Y by default if it was free)."
+LANG_FRENCH         "Touche qui ouvre le chat en jeu (Y par defaut si elle etait libre)."
 
 REFERENCE           TOUCHE_QUI_OUVRE_LE_MENU_COOPERATION_EN
 LANG_ENGLISH        "Key that opens the CO-OP menu in game (F6 by default if it was free)."

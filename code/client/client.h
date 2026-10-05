@@ -465,6 +465,7 @@ void Con_DrawCharacter (int cx, int line, int num);
 
 void Con_CheckResize (void);
 void Con_Init (void);
+void Con_DrawChatField( void );	// coop: "Say:" line while KEYCATCH_MESSAGE is set
 void Con_Clear_f (void);
 void Con_ToggleConsole_f (void);
 void Con_DrawNotify (void);

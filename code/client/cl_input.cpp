@@ -623,8 +623,10 @@ void CL_CmdButtons( usercmd_t *cmd ) {
 		in_buttons[i].wasPressed = qfalse;
 	}
 
-	if ( Key_GetCatcher( ) ) {
-		//cmd->buttons |= BUTTON_TALK;
+	// coop: while typing chat (messagemode), drop attack buttons (SP has no BUTTON_TALK)
+	if ( Key_GetCatcher() & KEYCATCH_MESSAGE ) {
+		cmd->buttons &= ~( BUTTON_ATTACK | BUTTON_ALT_ATTACK | BUTTON_FORCE_LIGHTNING
+			| BUTTON_USE_FORCE | BUTTON_FORCE_DRAIN | BUTTON_FORCEGRIP | BUTTON_FORCE_FOCUS );
 	}
 
 	// allow the game to know if any key at all is

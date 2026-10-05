@@ -204,6 +204,15 @@ static void CG_Print_f( void ) {
 	CG_Printf( "%s", in );
 }
 
+// coop: "chat" server command — console + on-screen chat box (like multiplayer)
+static void CG_Chat_f( void ) {
+	char	text[MAX_SAY_TEXT];
+
+	Q_strncpyz( text, CG_Argv( 1 ), sizeof( text ) );
+	CG_Printf( "%s\n", text );
+	CG_ChatBox_AddString( text );
+}
+
 static void CG_CaptionText_f( void ) {
 	sfxHandle_t sound = (sfxHandle_t)atoi( CG_Argv( 2 ) );
 
@@ -258,7 +267,7 @@ extern void CG_CoopCredits_f( void );		// cg_coop.cpp
 /* This array MUST be sorted correctly by alphabetical name field */
 static serverCommand_t	commands[] = {
 	{ "cad",				CG_CoopAllDown_f },		// coop: everyone is down, seconds before the checkpoint reload
-	{ "chat",				CG_Print_f },
+	{ "chat",				CG_Chat_f },			// coop: in-game chat (messagemode / say)
 	{ "clientLevelShot",	CG_ClientLevelShot_f },
 	{ "coopmenu",			CG_CoopMenu_f },		// coop: host asks us to open a menu (lobby)
 	{ "cp",					CG_CenterPrint_f },

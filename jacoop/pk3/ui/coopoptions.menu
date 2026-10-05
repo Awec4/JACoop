@@ -599,11 +599,40 @@
 		}
 		itemDef
 		{
+			// coop: chat key (messagemode), same as multiplayer Y
+			name				chatBind
+			group				player
+			type				ITEM_TYPE_BIND
+			style				WINDOW_STYLE_EMPTY
+			rect				260 175 340 14
+			text				"@JACOOP_CHAT_TOUCHE"
+			descText			"@JACOOP_TOUCHE_QUI_OUVRE_LE_CHAT_EN_JEU"
+			font				4
+			textscale			1
+			textalign			ITEM_ALIGN_RIGHT
+			textalignx			190
+			textaligny			0
+			forecolor			1 1 1 .82
+			cvarTest			"ui_coopOptionsTab"
+			showCvar			{ "0" }
+			visible				1
+			cvar				"messagemode"
+			mouseEnter
+			{
+				show			highlight3
+			}
+			mouseExit
+			{
+				hide			highlight3
+			}
+		}
+		itemDef
+		{
 			name				cameraLag
 			group				player
 			type				ITEM_TYPE_MULTI
 			style				WINDOW_STYLE_EMPTY
-			rect				260 175 340 14
+			rect				260 189 340 14
 			text				"@JACOOP_LISSAGE_CAMERA"
 			descText			"@JACOOP_RETARD_DE_LA_CAMERA_DES_CINEMATIQUES_CHE"
 			font				4
@@ -619,11 +648,11 @@
 			cvarFloatList		{ "@JACOOP_AUCUN" 0 "@JACOOP_LEGER" 50 "Normal" 100 "@JACOOP_FORT" 200 }
 			mouseEnter
 			{
-				show			highlight3
+				show			highlight4
 			}
 			mouseExit
 			{
-				hide			highlight3
+				hide			highlight4
 			}
 			action
 			{
@@ -636,7 +665,7 @@
 			group				player
 			type				ITEM_TYPE_MULTI
 			style				WINDOW_STYLE_EMPTY
-			rect				260 189 340 14
+			rect				260 203 340 14
 			text				"@JACOOP_CHAMP_DE_VISION"
 			descText			"@JACOOP_VALEUR_DE_REFERENCE_EN_4_3_SUR_UN_ECRAN"
 			font				4
@@ -652,11 +681,11 @@
 			cvarFloatList		{ "@JACOOP_80_NORMAL" 80 "90" 90 "100" 100 "110" 110 "120" 120 }
 			mouseEnter
 			{
-				show			highlight4
+				show			highlight5
 			}
 			mouseExit
 			{
-				hide			highlight4
+				hide			highlight5
 			}
 			action
 			{

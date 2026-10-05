@@ -102,6 +102,9 @@ LANG_ENGLISH        "Everyone votes: the majority wins, the host decides a tie."
 REFERENCE           CHAMP_DE_VISION
 LANG_ENGLISH        "Field of view:"
 
+REFERENCE           CHAT_TOUCHE
+LANG_ENGLISH        "Chat (key):"
+
 REFERENCE           CHANGER_DE_MODELE_OU_DE_SKIN_TOUT_DE_SUI
 LANG_ENGLISH        "Change model or skin right away, even in game."
 
@@ -888,6 +891,9 @@ LANG_ENGLISH        "CO-OP LOBBY"
 REFERENCE           SALON_JOUEURS
 LANG_ENGLISH        "LOBBY / PLAYERS"
 
+REFERENCE           SAY
+LANG_ENGLISH        "Say:"
+
 REFERENCE           SERRE_16
 LANG_ENGLISH        "Tight (16)"
 
@@ -926,6 +932,9 @@ LANG_ENGLISH        "Your name, as the other players see it (lobby, messages)."
 
 REFERENCE           TOUCHE_A_MAINTENIR_PRES_D_UN_COEQUIPIER
 LANG_ENGLISH        "Key to hold next to a downed teammate to revive them (G by default)."
+
+REFERENCE           TOUCHE_QUI_OUVRE_LE_CHAT_EN_JEU
+LANG_ENGLISH        "Key that opens in-game chat (Y by default if it was free)."
 
 REFERENCE           TOUCHE_QUI_OUVRE_LE_MENU_COOPERATION_EN
 LANG_ENGLISH        "Key that opens the CO-OP menu in game (F6 by default if it was free)."

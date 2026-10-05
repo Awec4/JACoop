@@ -4261,6 +4261,97 @@ static void CG_Draw2DScreenTints( void )
 		CG_FillRect( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, hcolor  );
 	}
 }
+
+/*
+=================
+CG_ChatBox_AddString / CG_ChatBox_DrawStrings
+
+coop: on-screen chat history (messagemode / "chat" server command), like multiplayer
+=================
+*/
+#define	CHATBOX_FONT_HEIGHT	20
+
+void CG_ChatBox_AddString( char *chatStr )
+{
+	chatBoxItem_t	*chat;
+
+	if ( cg_chatBox.integer <= 0 || !chatStr || !chatStr[0] )
+	{
+		return;
+	}
+
+	chat = &cg.chatItems[cg.chatItemActive];
+	memset( chat, 0, sizeof( *chat ) );
+	Q_strncpyz( chat->string, chatStr, sizeof( chat->string ) );
+	chat->time = cg.time + cg_chatBox.integer;
+	chat->lines = 1;	// Font_DrawString truncates via iMaxPixelWidth; no manual wrap
+
+	cg.chatItemActive++;
+	if ( cg.chatItemActive >= MAX_CHATBOX_ITEMS )
+	{
+		cg.chatItemActive = 0;
+	}
+}
+
+void CG_ChatBox_DrawStrings( void )
+{
+	int		i;
+	int		x = 8;	// left column
+	float	y = (float)cg_chatBoxHeight.integer;
+	float	fontScale = 0.65f;
+	float	lineH = CHATBOX_FONT_HEIGHT * fontScale;
+	int		linesToDraw = 0;
+	chatBoxItem_t *drawThese[MAX_CHATBOX_ITEMS];
+	int		numToDraw = 0;
+
+	if ( !cg_chatBox.integer )
+	{
+		return;
+	}
+
+	memset( drawThese, 0, sizeof( drawThese ) );
+	for ( i = 0; i < MAX_CHATBOX_ITEMS; i++ )
+	{
+		if ( cg.chatItems[i].time >= cg.time && cg.chatItems[i].string[0] )
+		{
+			int check;
+			int insertionPoint = numToDraw;
+
+			for ( check = numToDraw - 1; check >= 0; check-- )
+			{
+				if ( drawThese[check] && cg.chatItems[i].time < drawThese[check]->time )
+				{
+					insertionPoint = check;
+				}
+			}
+			if ( insertionPoint < numToDraw )
+			{
+				memmove( &drawThese[insertionPoint + 1], &drawThese[insertionPoint],
+					( numToDraw - insertionPoint ) * sizeof( drawThese[0] ) );
+			}
+			drawThese[insertionPoint] = &cg.chatItems[i];
+			numToDraw++;
+			linesToDraw += ( cg.chatItems[i].lines > 0 ) ? cg.chatItems[i].lines : 1;
+		}
+	}
+
+	if ( !numToDraw )
+	{
+		return;
+	}
+
+	y -= lineH * linesToDraw;
+	// coop: stretch 2D keeps every line on the left without changing HUD aspect rules
+	cgi_R_SetAspect2D( 0 );
+	for ( i = 0; i < numToDraw; i++ )
+	{
+		cgi_R_Font_DrawString( x, (int)y, drawThese[i]->string, colorTable[CT_WHITE],
+			cgs.media.qhFontSmall, 620, fontScale );
+		y += lineH * ( ( drawThese[i]->lines > 0 ) ? drawThese[i]->lines : 1 );
+	}
+	cgi_R_SetAspect2D( 1 );
+}
+
 /*
 =================
 CG_Draw2D
@@ -4399,6 +4490,8 @@ static void CG_Draw2D( void )
 		CG_DrawCenterString();
 		CG_CoopDrawDowned();	// coop: downed / revive overlay and teammate markers
 	}
+
+	CG_ChatBox_DrawStrings();	// coop: in-game chat box (always on top of HUD)
 
 /*	if (cg.showInformation)
 	{

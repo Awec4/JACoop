@@ -1378,6 +1378,50 @@ void Cmd_SaberDrop_f( gentity_t *ent, int saberNum )
 }
 
 /*
+==================
+Cmd_Say_f
+
+coop: in-game chat (messagemode -> say "text"), broadcast to every player like MP
+==================
+*/
+static void Cmd_Say_f( gentity_t *ent )
+{
+	char	text[MAX_SAY_TEXT];
+	char	*p;
+	int		i;
+
+	if ( !ent || !ent->client || gi.argc() < 2 )
+	{
+		return;
+	}
+
+	p = ConcatArgs( 1 );
+	Q_strncpyz( text, p, sizeof( text ) );
+	Q_strstrip( text, "\n\r", "  " );
+	if ( !text[0] )
+	{
+		return;
+	}
+
+	gi.Printf( "say: %s: %s\n", ent->client->pers.netname, text );
+
+	// name^7: ^2message — same colouring as multiplayer SAY_ALL
+	for ( i = 0; i < MAX_CLIENTS; i++ )
+	{
+		gentity_t *other = G_CoopPlayerSlot( i );
+		if ( !other )
+		{
+			continue;
+		}
+		gi.SendServerCommand( i, "chat \"%s%c%c: %c%c%s\"",
+			ent->client->pers.netname,
+			Q_COLOR_ESCAPE, COLOR_WHITE,
+			Q_COLOR_ESCAPE, COLOR_GREEN,
+			text );
+	}
+}
+
+/*
 =================
 ClientCommand
 =================
@@ -1402,6 +1446,11 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
+	if (Q_stricmp (cmd, "say") == 0)
+	{
+		Cmd_Say_f( ent );	// coop: in-game chat from messagemode
+		return;
+	}
 	if (Q_stricmp (cmd, "coopforce") == 0)
 	{
 		G_CoopForceCommand( ent );	// coop: a joiner allocated its force points

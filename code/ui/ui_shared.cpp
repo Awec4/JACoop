@@ -5747,6 +5747,7 @@ static const char *g_bindCommands[] = {
 #else
 	"load quick",
 #endif
+	"messagemode",	// coop: in-game chat (Y by default, Key_CoopDefaultBinds)
 	"saberAttackCycle",
 #ifdef JK2_MODE
 	"save quik*",

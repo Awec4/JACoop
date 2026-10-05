@@ -40,6 +40,9 @@ int			nextHistoryLine;	// the last line in the history buffer, not masked
 int			historyLine;		// the line being displayed from history buffer will be <= nextHistoryLine
 field_t		historyEditLines[COMMAND_HISTORY];
 
+// coop: in-game chat (messagemode), same field as multiplayer
+field_t		chatField;
+
 keyGlobals_t	kg;
 
 // do NOT blithely change any of the key names (3rd field) here, since they have to match the key binds
@@ -777,6 +780,38 @@ void Console_Key (int key) {
 
 //============================================================================
 
+/*
+================
+Message_Key
+
+coop: in-game talk message (messagemode), same as multiplayer
+================
+*/
+void Message_Key( int key ) {
+	char buffer[MAX_STRING_CHARS] = {0};
+
+	if ( key == A_ESCAPE ) {
+		Key_SetCatcher( Key_GetCatcher() & ~KEYCATCH_MESSAGE );
+		Field_Clear( &chatField );
+		return;
+	}
+
+	if ( key == A_ENTER || key == A_KP_ENTER ) {
+		if ( chatField.buffer[0] && cls.state == CA_ACTIVE ) {
+			// forward to the game as a client command; host and joiners both use this path
+			Com_sprintf( buffer, sizeof( buffer ), "say \"%s\"\n", chatField.buffer );
+			CL_AddReliableCommand( buffer );
+		}
+		Key_SetCatcher( Key_GetCatcher() & ~KEYCATCH_MESSAGE );
+		Field_Clear( &chatField );
+		return;
+	}
+
+	Field_KeyDownEvent( &chatField, key );
+}
+
+//============================================================================
+
 qboolean Key_GetOverstrikeMode( void ) {
 	return kg.key_overstrikeMode;
 }
@@ -1019,9 +1054,14 @@ void Key_CoopDefaultBinds( void )
 	{
 		Key_CoopDefaultBind( "F6", "uimenu coopMenu" );
 	}
-	if ( ( done->integer & 3 ) != 3 )
+	// coop: Y opens chat like multiplayer (messagemode); bit 4 so older installs still get it once
+	if ( !( done->integer & 4 ) )
 	{
-		Cvar_Set( "coop_bindsInit", "3" );
+		Key_CoopDefaultBind( "y", "messagemode" );
+	}
+	if ( ( done->integer & 7 ) != 7 )
+	{
+		Cvar_Set( "coop_bindsInit", "7" );
 	}
 }
 
@@ -1308,6 +1348,12 @@ void CL_KeyDownEvent( int key, unsigned time )
 			return;
 		}
 
+		// coop: leave chat without opening the pause menu
+		if ( Key_GetCatcher() & KEYCATCH_MESSAGE ) {
+			Message_Key( key );
+			return;
+		}
+
 		if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) ) {
 			if ( cls.state == CA_ACTIVE )
 				UI_SetActiveMenu( "ingame", NULL );
@@ -1330,6 +1376,9 @@ void CL_KeyDownEvent( int key, unsigned time )
 		Console_Key( key );
 	} else if ( Key_GetCatcher() & KEYCATCH_UI ) {
 		_UI_KeyEvent( key, qtrue );
+	} else if ( Key_GetCatcher() & KEYCATCH_MESSAGE ) {
+		// coop: type into the chat field
+		Message_Key( key );
 	} else if ( cls.state == CA_DISCONNECTED ) {
 		Console_Key( key );
 	}
@@ -1398,6 +1447,7 @@ void CL_CharEvent( int key ) {
 	// distribute the key down event to the apropriate handler
 		 if ( Key_GetCatcher() & KEYCATCH_CONSOLE )		Field_CharEvent( &g_consoleField, key );
 	else if ( Key_GetCatcher() & KEYCATCH_UI )			_UI_KeyEvent( key|K_CHAR_FLAG, qtrue );
+	else if ( Key_GetCatcher() & KEYCATCH_MESSAGE )		Field_CharEvent( &chatField, key );	// coop: chat typing
 	else if ( cls.state == CA_DISCONNECTED )			Field_CharEvent( &g_consoleField, key );
 }
 
