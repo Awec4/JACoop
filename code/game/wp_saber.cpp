@@ -425,9 +425,14 @@ void WP_SaberAddG2SaberModels( gentity_t *ent, int specificSaberNum )
 	{
 		if ( ent->weaponModel[saberNum] > 0 )
 		{//we already have a weapon model in this slot
-			//remove it
-			gi.G2API_SetSkin( &ent->ghoul2[ent->weaponModel[saberNum]], -1, 0 );
-			gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[saberNum] );
+			//remove it. A slot already cleared (weapon switch) must not be removed
+			// again: G2API_RemoveGhoul2Model asserts, and the index would stay.
+			if ( ent->weaponModel[saberNum] < ent->ghoul2.size()
+				&& ent->ghoul2[ent->weaponModel[saberNum]].mModelindex >= 0 )
+			{
+				gi.G2API_SetSkin( &ent->ghoul2[ent->weaponModel[saberNum]], -1, 0 );
+				gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[saberNum] );
+			}
 			ent->weaponModel[saberNum] = -1;
 		}
 		if ( saberNum > 0 )

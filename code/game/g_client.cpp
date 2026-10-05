@@ -1959,14 +1959,22 @@ void G_RemoveWeaponModels( gentity_t *ent )
 {
 	if ( ent->ghoul2.size() )
 	{
+		// slot already removed (mModelindex -1): G2API_RemoveGhoul2Model asserts.
+		// Still forget the index, or a later reattach thinks the hilt is there.
 		if ( ent->weaponModel[0] > 0 )
 		{
-			gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[0] );
+			if ( ent->weaponModel[0] < ent->ghoul2.size() && ent->ghoul2[ent->weaponModel[0]].mModelindex >= 0 )
+			{
+				gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[0] );
+			}
 			ent->weaponModel[0] = -1;
 		}
 		if ( ent->weaponModel[1] > 0 )
 		{
-			gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[1] );
+			if ( ent->weaponModel[1] < ent->ghoul2.size() && ent->ghoul2[ent->weaponModel[1]].mModelindex >= 0 )
+			{
+				gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[1] );
+			}
 			ent->weaponModel[1] = -1;
 		}
 	}

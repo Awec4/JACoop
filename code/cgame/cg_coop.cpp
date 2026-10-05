@@ -1239,20 +1239,32 @@ void CG_CoopSyncCharacter( centity_t *cent )
 
 	CG_CoopSyncHandModel( gent, st );
 
-	// weapon / saber hilt models follow s.weapon
-	if ( s->weapon != st->weapon )
+	// weapon / saber hilt models follow s.weapon. A switch that misses the hilt
+	// (model string not ready, or the slot already removed) used to stick: st->weapon
+	// was stored anyway, so the next frames never tried again and the saber was gone.
 	{
-		G_RemoveWeaponModels( gent );
-		if ( s->weapon == WP_SABER )
+		const qboolean hiltLive = (qboolean)( gent->weaponModel[0] >= 0 && gent->weaponModel[0] < gent->ghoul2.size()
+			&& gent->ghoul2[gent->weaponModel[0]].mModelindex >= 0 );
+		const qboolean wantSaber = (qboolean)( s->weapon == WP_SABER && !s->saberInFlight );
+		if ( s->weapon != st->weapon || ( wantSaber && !hiltLive ) )
 		{
-			WP_SaberAddG2SaberModels( gent, -1 );
+			G_RemoveWeaponModels( gent );
+			if ( s->weapon == WP_SABER )
+			{
+				saberInfo_t *saber = &gent->client->ps.saber[0];
+				if ( ( !saber->model || !saber->model[0] ) && saber->name && saber->name[0] )
+				{
+					WP_SaberParseParms( saber->name, saber, qfalse );
+				}
+				WP_SaberAddG2SaberModels( gent, -1 );
+			}
+			else if ( s->weapon > WP_NONE && s->weapon < WP_NUM_WEAPONS && weaponData[s->weapon].weaponMdl[0] )
+			{
+				G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handRBolt, 0 );
+			}
+			st->weapon = s->weapon;
+			st->inFlight = qfalse;
 		}
-		else if ( s->weapon > WP_NONE && s->weapon < WP_NUM_WEAPONS && weaponData[s->weapon].weaponMdl[0] )
-		{
-			G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handRBolt, 0 );
-		}
-		st->weapon = s->weapon;
-		st->inFlight = qfalse;
 	}
 
 	// saber throw: the hilt leaves the hand (the thrown entity carries it and
@@ -1264,7 +1276,11 @@ void CG_CoopSyncCharacter( centity_t *cent )
 		{
 			if ( gent->weaponModel[0] > 0 )
 			{
-				gi.G2API_RemoveGhoul2Model( gent->ghoul2, gent->weaponModel[0] );
+				// already removed by the weapon swap above: don't assert in G2API_RemoveGhoul2Model
+				if ( gent->weaponModel[0] < gent->ghoul2.size() && gent->ghoul2[gent->weaponModel[0]].mModelindex >= 0 )
+				{
+					gi.G2API_RemoveGhoul2Model( gent->ghoul2, gent->weaponModel[0] );
+				}
 				gent->weaponModel[0] = -1;
 			}
 		}

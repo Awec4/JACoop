@@ -1358,6 +1358,16 @@ hand, the saber is gone") that two local instances did not reproduce.
 static int	coopSaberSeen[MAX_CLIENTS];		// bit 0 in inventory, bit 1 has a definition, bit 2 hilt drawn in hand
 static int	coopSaberHandSince[MAX_CLIENTS];
 
+// the ghoul2 slot is still a model, not a hole left by G2API_RemoveGhoul2Model
+static qboolean G_CoopHiltLive( const gentity_t *ent, int slot )
+{
+	if ( !ent || slot < 0 || slot >= ent->ghoul2.size() )
+	{
+		return qfalse;
+	}
+	return (qboolean)( ent->ghoul2[slot].mModelindex >= 0 );
+}
+
 void G_CoopSaberWatch( void )
 {
 	extern qboolean PM_InKnockDown( playerState_t *ps );
@@ -1374,6 +1384,19 @@ void G_CoopSaberWatch( void )
 		}
 		playerState_t	*ps = &p->client->ps;
 		int				now = 0;
+
+		// coop: switching weapons removes the hilt and puts it back at the end of
+		// the holster. If that second step misses (no model string, bolt not ready),
+		// the saber stays gone while STAT_WEAPONS still has it. Put the hilt back.
+		if ( ( ps->stats[STAT_WEAPONS] & ( 1 << WP_SABER ) ) && ps->weapon == WP_SABER && !ps->saberInFlight
+			&& !G_CoopHiltLive( p, p->weaponModel[0] ) )
+		{
+			if ( ( !ps->saber[0].model || !ps->saber[0].model[0] ) && ps->saber[0].name && ps->saber[0].name[0] )
+			{
+				WP_SaberParseParms( ps->saber[0].name, &ps->saber[0], qfalse );
+			}
+			WP_SaberAddG2SaberModels( p );
+		}
 
 		if ( ps->stats[STAT_WEAPONS] & ( 1 << WP_SABER ) )
 		{

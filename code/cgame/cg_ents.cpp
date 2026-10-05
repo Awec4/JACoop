@@ -331,7 +331,11 @@ Ghoul2 Insert Start
 */
 
 	// if set to invisible, skip
-	if (!s1->modelindex && !cent->gent->ghoul2.IsValid() ) {
+	// coop: a trip mine's laser is drawn further down. The host has the ghoul2
+	// locally; a joiner often has neither a model index nor an instance, and
+	// this return was why the beam never appeared for them.
+	if (!s1->modelindex && !cent->gent->ghoul2.IsValid()
+		&& !( s1->weapon == WP_TRIP_MINE && ( s1->eFlags & ( EF_FIRING | EF_PROX_TRIP ) ) ) ) {
 		return;
 	}
 /*
@@ -759,6 +763,13 @@ Ghoul2 Insert End
 	}
 
 	//--------------------------
+	// coop: laser / proximity glow live in effects a joiner only has after this
+	// weapon was registered. A mine the other player placed still has to draw.
+	if ( cg_remoteClient && s1->weapon == WP_TRIP_MINE
+		&& ( s1->eFlags & ( EF_FIRING | EF_PROX_TRIP ) ) )
+	{
+		CG_RegisterWeapon( WP_TRIP_MINE );
+	}
 	if ( s1->eFlags & EF_FIRING && cent->gent->inuse )
 	{
 		//special code for adding the beam to the attached tripwire mine
