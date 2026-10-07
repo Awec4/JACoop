@@ -13,9 +13,11 @@ Minimal built-in voice so players don't need Discord for a quick co-op night:
   playback  per-speaker jitter buffers mixed into S_RawSamples, so several
             people can talk over each other without interleaving chunks
 
-Hold +coop_voice (default V) to talk. cl_coopVoice 0 disables the whole thing,
-cl_coopVoiceGain scales what you hear. cg_coopVoiceTalk is written for cgame:
-bits 0..15 = who talked recently, bit 30 = "you are transmitting".
+Hold +coop_voice (default V) to talk, or set cl_coopVoiceVox to an RMS
+threshold (try 400) for open-mic voice activation. cl_coopVoice 0 disables the
+whole thing, cl_coopVoiceGain scales what you hear, cl_coopVoiceDevice picks
+the capture device (coop_voicemics lists them, -1 = default). cg_coopVoiceTalk
+is written for cgame: bits 0..15 = who talked recently, bit 30 = transmitting.
 ==============================================================================
 */
 
@@ -33,9 +35,13 @@ bits 0..15 = who talked recently, bit 30 = "you are transmitting".
 
 static cvar_t	*cl_coopVoice;
 static cvar_t	*cl_coopVoiceGain;
+static cvar_t	*cl_coopVoiceDevice;	// -1 = default mic, else SDL device index
+static cvar_t	*cl_coopVoiceVox;		// 0 = push-to-talk only, >0 = RMS gate threshold
 static cvar_t	*cl_coopVoiceTalk;	// ROM for cgame: talker bitmask + TX flag
 
 static qboolean		voiceHeld;				// +coop_voice is held
+static int			voiceLevel;				// smoothed mic level, for the vox gate
+static int			voiceTxUntil;			// realtime: keep the TX indicator / vox tail open
 static qboolean		voiceMicTried;			// we attempted opening the capture device
 static qboolean		voiceMicFailed;
 static SDL_AudioDeviceID	voiceMic = 0;
@@ -168,6 +174,16 @@ static qboolean Voice_OpenMic( void ) {
 		voiceMicFailed = qtrue;
 		return qfalse;
 	}
+	const char	*devName = NULL;
+	if ( cl_coopVoiceDevice->integer >= 0 ) {
+		devName = SDL_GetAudioDeviceName( cl_coopVoiceDevice->integer, 1 );
+		if ( !devName ) {
+			Com_Printf( "voice: no capture device %i (coop_voicemics lists them)\n",
+				cl_coopVoiceDevice->integer );
+			voiceMicFailed = qtrue;
+			return qfalse;
+		}
+	}
 	SDL_AudioSpec spec;
 	memset( &spec, 0, sizeof( spec ) );
 	spec.freq = VOICE_RATE;
@@ -175,7 +191,7 @@ static qboolean Voice_OpenMic( void ) {
 	spec.channels = 1;
 	spec.samples = 2048;
 	spec.callback = NULL;
-	voiceMic = SDL_OpenAudioDevice( NULL, 1, &spec, NULL, 0 );	// 1 = capture
+	voiceMic = SDL_OpenAudioDevice( devName, 1, &spec, NULL, 0 );	// 1 = capture
 	if ( !voiceMic ) {
 		Com_Printf( "voice: no capture device (%s)\n", SDL_GetError() );
 		voiceMicFailed = qtrue;
@@ -185,29 +201,71 @@ static qboolean Voice_OpenMic( void ) {
 }
 
 static void Voice_SendChunk( void ) {
-	byte	pkt[4 + 7 + 3 + VOICE_MAX_PAYLOAD];
-	int		payloadLen = Voice_EncodeChunk( voiceTxPcm, VOICE_CHUNK, pkt + 14 );
+	static byte	scratch[VOICE_MAX_PAYLOAD];
+	byte		pkt[4 + 7 + 3 + VOICE_MAX_PAYLOAD];
+	qboolean	send = voiceHeld;
 
-	*(int *)( pkt ) = -1;
-	memcpy( pkt + 4, "cvoice\n", 7 );
-	pkt[11] = 0xff;										// slot: the server fills it in
-	*(unsigned short *)( pkt + 12 ) = (unsigned short)payloadLen;
-	NET_SendPacket( NS_CLIENT, 14 + payloadLen, pkt, clc.serverAddress );
+	// vox gate: open the mic stream while the level is over the threshold and
+	// hold it a little past word tails so speech doesn't chop
+	const int	voxThresh = (int)cl_coopVoiceVox->value;
+	if ( voxThresh > 0 ) {
+		if ( voiceLevel >= voxThresh ) {
+			voiceTxUntil = cls.realtime + 400;
+		}
+		if ( cls.realtime < voiceTxUntil ) {
+			send = qtrue;
+		}
+	}
+
+	if ( send ) {
+		const int	payloadLen = Voice_EncodeChunk( voiceTxPcm, VOICE_CHUNK, pkt + 14 );
+		*(int *)( pkt ) = -1;
+		memcpy( pkt + 4, "cvoice\n", 7 );
+		pkt[11] = 0xff;									// slot: the server fills it in
+		*(unsigned short *)( pkt + 12 ) = (unsigned short)payloadLen;
+		NET_SendPacket( NS_CLIENT, 14 + payloadLen, pkt, clc.serverAddress );
+	}
+	else {
+		// keep the predictor drifting so the first voiced chunk doesn't pop
+		Voice_EncodeChunk( voiceTxPcm, VOICE_CHUNK, scratch );
+	}
 
 	voiceTxCount -= VOICE_CHUNK;
 	memmove( voiceTxPcm, voiceTxPcm + VOICE_CHUNK, voiceTxCount * sizeof( short ) );
 }
 
-static void Voice_TransmitFrame( void ) {
-	qboolean	tx = (qboolean)( voiceHeld && cl_coopVoice->integer && cls.state == CA_ACTIVE
-								&& clc.serverAddress.type != NA_BAD );
+static void CL_CoopVoiceMics_f( void ) {
+	const int	n = SDL_GetNumAudioDevices( 1 );	// 1 = capture devices
+	if ( n <= 0 ) {
+		Com_Printf( "voice: no capture devices\n" );
+		return;
+	}
+	Com_Printf( "capture devices (cl_coopVoiceDevice, -1 = default):\n" );
+	for ( int i = 0; i < n; i++ ) {
+		Com_Printf( "  %i: %s\n", i, SDL_GetAudioDeviceName( i, 1 ) );
+	}
+}
 
-	if ( !tx || !Voice_OpenMic() ) {
+static void Voice_TransmitFrame( void ) {
+	const qboolean	inGame = (qboolean)( cl_coopVoice->integer && cls.state == CA_ACTIVE
+							&& clc.serverAddress.type != NA_BAD );
+	const qboolean	listen = (qboolean)( inGame && ( voiceHeld || cl_coopVoiceVox->value > 0.0f ) );
+
+	if ( cl_coopVoiceDevice->modified && voiceMic ) {	// mic picker changed: reopen
+		SDL_CloseAudioDevice( voiceMic );
+		voiceMic = 0;
+		voiceMicTried = qfalse;
+		voiceMicFailed = qfalse;
+	}
+	cl_coopVoiceDevice->modified = qfalse;
+
+	if ( !listen || !Voice_OpenMic() ) {
 		if ( voiceMic ) {
 			SDL_PauseAudioDevice( voiceMic, 1 );
 			SDL_ClearQueuedAudio( voiceMic );
 		}
 		voiceTxCount = 0;
+		voiceLevel = 0;
 		return;
 	}
 
@@ -225,11 +283,16 @@ static void Voice_TransmitFrame( void ) {
 		}
 		const short	*in = (const short *)tmp;
 		int			n = got / sizeof( short );
+		long		sum = 0;
 		for ( int i = 0; i < n; i++ ) {
+			sum += abs( in[i] );	// smoothed level feeds the vox gate
 			voiceTxPcm[voiceTxCount++] = in[i];
 			if ( voiceTxCount == VOICE_CHUNK ) {
 				Voice_SendChunk();
 			}
+		}
+		if ( n ) {
+			voiceLevel = ( voiceLevel * 3 + (int)( sum / n ) ) / 4;
 		}
 		if ( voiceTxCount >= sizeof( voiceTxPcm ) / sizeof( short ) ) {
 			voiceTxCount = 0;	// should never hit: 2 chunks fit exactly
@@ -321,8 +384,8 @@ static void Voice_PlaybackFrame( int msec ) {
 		S_RawSamples( want, VOICE_RATE, 2, 1, (byte *)out, 1.0f, qtrue );
 	}
 
-	if ( voiceHeld && cl_coopVoice->integer && voiceMic ) {
-		mask |= VOICE_TALK_FLAG;
+	if ( voiceMic && ( voiceHeld || cls.realtime < voiceTxUntil ) ) {
+		mask |= VOICE_TALK_FLAG;	// transmitting right now (PTT or vox gate)
 	}
 	if ( cl_coopVoiceTalk->integer != mask ) {
 		Cvar_SetValue( "cg_coopVoiceTalk", mask );
@@ -339,9 +402,12 @@ Entry points
 void CL_CoopVoice_Init( void ) {
 	cl_coopVoice = Cvar_Get( "cl_coopVoice", "1", CVAR_ARCHIVE );
 	cl_coopVoiceGain = Cvar_Get( "cl_coopVoiceGain", "1.0", CVAR_ARCHIVE );
+	cl_coopVoiceDevice = Cvar_Get( "cl_coopVoiceDevice", "-1", CVAR_ARCHIVE );
+	cl_coopVoiceVox = Cvar_Get( "cl_coopVoiceVox", "0", CVAR_ARCHIVE );
 	cl_coopVoiceTalk = Cvar_Get( "cg_coopVoiceTalk", "0", CVAR_TEMP );
 	Cmd_AddCommand( "+coop_voice", CL_CoopVoiceDown );
 	Cmd_AddCommand( "-coop_voice", CL_CoopVoiceUp );
+	Cmd_AddCommand( "coop_voicemics", CL_CoopVoiceMics_f );
 }
 
 void CL_CoopVoice_Shutdown( void ) {
@@ -353,11 +419,14 @@ void CL_CoopVoice_Shutdown( void ) {
 	voiceMicTried = qfalse;
 	voiceMicFailed = qfalse;
 	voiceTxCount = 0;
+	voiceLevel = 0;
+	voiceTxUntil = 0;
 	memset( voiceRxHead, 0, sizeof( voiceRxHead ) );
 	memset( voiceRxCount, 0, sizeof( voiceRxCount ) );
 	memset( voiceRxHeard, 0, sizeof( voiceRxHeard ) );
 	Cmd_RemoveCommand( "+coop_voice" );
 	Cmd_RemoveCommand( "-coop_voice" );
+	Cmd_RemoveCommand( "coop_voicemics" );
 }
 
 void CL_CoopVoice_Frame( int msec ) {

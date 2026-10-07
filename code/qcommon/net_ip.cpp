@@ -405,6 +405,38 @@ static void NET_OpenIP( void ) {
 
 /*
 ====================
+NET_GetLocalIP
+
+First LAN address of this machine ("192.168.x.x" style), for coop_invite
+when hosting. NULL when winsock is off or the machine has none.
+====================
+*/
+const char *NET_GetLocalIP( void ) {
+	static char	addr[16];
+	char		hostname[256];
+	struct hostent	*h;
+
+	addr[0] = 0;
+#ifdef _WIN32
+	if ( !winsockInitialized ) {
+		return NULL;
+	}
+#endif
+	if ( gethostname( hostname, sizeof( hostname ) ) == SOCKET_ERROR ) {
+		return NULL;
+	}
+	if ( ( h = gethostbyname( hostname ) ) == NULL || !h->h_addr_list[0] ) {
+		return NULL;
+	}
+	Q_strncpyz( addr, inet_ntoa( *(struct in_addr *)h->h_addr_list[0] ), sizeof( addr ) );
+	if ( !strcmp( addr, "127.0.0.1" ) ) {
+		return NULL;	// resolved to loopback only: nothing useful to share
+	}
+	return addr;
+}
+
+/*
+====================
 NET_Shutdown
 ====================
 */

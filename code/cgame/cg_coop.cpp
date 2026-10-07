@@ -2729,7 +2729,7 @@ void CG_CoopDrawNametags( void )
 			continue;
 		}
 		const float dist = Distance( cg.refdef.vieworg, cent->lerpOrigin );
-		if ( dist < 48.0f || dist > 2200.0f )
+		if ( dist < 48.0f || dist > 4000.0f )
 		{
 			continue;	// hugging the camera: noise; across the map: clutter
 		}
@@ -2737,9 +2737,39 @@ void CG_CoopDrawNametags( void )
 		float	x, y;
 		VectorCopy( cent->lerpOrigin, org );
 		org[2] += 60;
-		if ( !CG_WorldCoordToScreenCoordFloat( org, &x, &y ) )
+		if ( !CG_WorldCoordToScreenCoordFloat( org, &x, &y ) || x < 4 || x > 636 || y < 4 || y > 476 )
 		{
-			continue;	// behind the camera
+			// offscreen teammate: pin the name to the screen edge in their
+			// direction so the group can find each other without wandering
+			if ( dist < 60.0f )
+			{
+				continue;
+			}
+			vec3_t	dir;
+			VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, dir );
+			float	z = DotProduct( dir, cg.refdef.viewaxis[0] );
+			float	rx = DotProduct( dir, cg.refdef.viewaxis[1] );	// left+
+			float	uy = DotProduct( dir, cg.refdef.viewaxis[2] );	// up+
+			if ( z < 8.0f )
+			{	// behind the camera: flip so the edge lands opposite, and
+				// park straight-behind at bottom-center instead of mid screen
+				rx = -rx; uy = -uy; z = 8.0f;
+				if ( rx * rx + uy * uy < 400.0f ) uy = -60.0f;
+			}
+			const float	ex = Com_Clamp( 20.0f, 616.0f, 320.0f - rx * 320.0f / ( z * tan( cg.refdef.fov_x * 0.008726646f ) ) );
+			const float	ey = Com_Clamp( 16.0f, 452.0f, 240.0f - uy * 240.0f / ( z * tan( cg.refdef.fov_y * 0.008726646f ) ) );
+			vec4_t	edgeCol = { 1, 1, 1, 0.55f };
+			if ( talkBits & ( 1 << k ) )
+			{
+				edgeCol[0] = 0.4f; edgeCol[2] = 0.4f;	// talking offscreen still shows green
+			}
+			const int	ew = cgi_R_Font_StrLenPixels( name, small, 0.6f );
+			cgi_R_Font_DrawString( ex - ew / 2, ey, name, edgeCol, small, -1, 0.6f );
+			continue;
+		}
+		if ( dist > 2200.0f )
+		{
+			continue;
 		}
 		const float alpha = Com_Clamp( 0.35f, 0.95f, 1.0f - dist / 2400.0f );
 		vec4_t		nameCol = { 1, 1, 1, alpha };
@@ -3021,18 +3051,33 @@ void CG_CoopDrawScoreboard( void )
 	};
 	// right edge of each numeric column (the name hugs the left, max 112px)
 	const int	colR[6] = { 0, x0 + 140, x0 + 158, x0 + 176, x0 + 194, x1 - 6 };
+	const int	talkBits = cg_coopVoiceTalk.integer;
 
 	cgi_R_SetAspect2D( 0 );
-	CG_FillRect( x0, y0, x1 - x0, ( rows + 1 ) * rowH + 4, panel );
+	CG_FillRect( x0, y0, x1 - x0, ( rows + 2 ) * rowH + 4, panel );
+
+	// title: server name left, occupancy right
+	const char	*info = CG_ConfigString( CS_SERVERINFO );
+	const char	*hostname = Info_ValueForKey( info, "sv_hostname" );
+	if ( !hostname[0] )
+	{
+		hostname = "JACOOP";
+	}
+	cgi_R_Font_DrawString( x0 + 6, y0 + 2, hostname, head, small, x1 - x0 - 44, 0.62f );
+	{
+		const char	*count = va( "%i/%s", rows, Info_ValueForKey( info, "sv_maxclients" ) );
+		const int	cw = cgi_R_Font_StrLenPixels( count, small, 0.62f );
+		cgi_R_Font_DrawString( x1 - 6 - cw, y0 + 2, count, head, small, -1, 0.62f );
+	}
 
 	for ( int c = 1; c < 6; c++ )
 	{
 		const int	w = cgi_R_Font_StrLenPixels( cols[c], small, 0.6f );
-		cgi_R_Font_DrawString( colR[c] - w, y0 + 2, cols[c], head, small, -1, 0.6f );
+		cgi_R_Font_DrawString( colR[c] - w, y0 + rowH + 1, cols[c], head, small, -1, 0.6f );
 	}
-	CG_FillRect( x0 + 4, y0 + rowH, x1 - x0 - 8, 1, hairline );
+	CG_FillRect( x0 + 4, y0 + 2 * rowH, x1 - x0 - 8, 1, hairline );
 
-	int	y = y0 + rowH + 3;
+	int	y = y0 + 2 * rowH + 3;
 	for ( int r = 0; r < rows; r++ )
 	{
 		const coopStat_t	*s = &coopStats[order[r]];
@@ -3041,7 +3086,12 @@ void CG_CoopDrawScoreboard( void )
 			va( "%i", s->kills ), va( "%i", s->downs ), va( "%i", s->revives ),
 			va( "%i", s->deaths ), va( "%i", s->ping ),
 		};
-		cgi_R_Font_DrawString( x0 + 6, y, s->name, *col, small, 112, 0.7f );
+		if ( talkBits & ( 1 << order[r] ) )
+		{	// voice: green dot while this player is transmitting
+			static const vec4_t	talkDot = { 0.4f, 1.0f, 0.4f, 1.0f };
+			CG_FillRect( x0 + 6, y + 2, 4, 4, talkDot );
+		}
+		cgi_R_Font_DrawString( x0 + 14, y, s->name, *col, small, 104, 0.7f );
 		for ( int c = 0; c < 5; c++ )
 		{
 			const int	w = cgi_R_Font_StrLenPixels( num[c], small, 0.7f );

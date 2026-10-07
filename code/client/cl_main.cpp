@@ -33,6 +33,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "../ghoul2/G2.h"
 #include "qcommon/stringed_ingame.h"
 #include "sys/sys_loadlib.h"
+#include "SDL.h"	// coop: SDL_SetClipboardText for coop_invite
 #include "qcommon/ojk_saved_game.h"
 
 #define	RETRANSMIT_TIMEOUT	3000	// time between connection packet retransmits
@@ -386,6 +387,35 @@ static void CL_CoopKeys_f( void ) {
 	Com_Printf( "coop_keys: state %i catcher %i (console %i ui %i) uiFullscreen %i sensitivity %.2f cgameStarted %i cl_paused %i\n",
 		cls.state, Key_GetCatcher(), ( Key_GetCatcher() & KEYCATCH_CONSOLE ) ? 1 : 0, ( Key_GetCatcher() & KEYCATCH_UI ) ? 1 : 0,
 		_UI_IsFullscreen(), cl.cgameSensitivity, cls.cgameStarted, cl_paused->integer );
+}
+
+/*
+===================
+CL_CoopInvite_f
+
+coop: copy the session address to the clipboard. A joiner gets the host's
+address it is connected to; the host gets its LAN ip:net_port (its public
+internet address can't be discovered locally — share that by hand).
+===================
+*/
+static void CL_CoopInvite_f( void ) {
+	char	invite[64];
+
+	if ( com_sv_running->integer ) {
+		const char	*ip = NET_GetLocalIP();
+		if ( !ip ) {
+			Com_Printf( "coop_invite: no LAN address found - share your public IP instead\n" );
+			return;
+		}
+		Com_sprintf( invite, sizeof( invite ), "%s:%i", ip, Cvar_VariableIntegerValue( "net_port" ) );
+	} else if ( cls.state == CA_ACTIVE ) {
+		Q_strncpyz( invite, NET_AdrToString( clc.serverAddress ), sizeof( invite ) );
+	} else {
+		Com_Printf( "coop_invite: not in a game\n" );
+		return;
+	}
+	SDL_SetClipboardText( invite );
+	Com_Printf( "coop_invite: copied \"%s\"\n", invite );
 }
 
 void CL_Connect_f( void ) {
@@ -1936,6 +1966,7 @@ void CL_Init( void ) {
 	Cmd_AddCommand ("vid_restart", CL_Vid_Restart_f);
 	Cmd_AddCommand ("connect", CL_Connect_f);
 	Cmd_AddCommand ("coop_keys", CL_CoopKeys_f);	// coop: where do keys and mouse go right now
+	Cmd_AddCommand ("coop_invite", CL_CoopInvite_f);	// coop: copy the session address to the clipboard
 	Cmd_AddCommand ("uiclose", Menus_CloseAll);		// coop dev: close every menu (uimenu stacks them)
 	Cmd_AddCommand ("coop_waitjoin", CL_CoopWaitJoin_f);	// coop dev: hold a test config until the joiners are in
 	Cmd_AddCommand ("coop_waitcam", CL_CoopWaitCam_f);	// coop dev: ... and until the map's cinematic is over
@@ -2001,6 +2032,7 @@ void CL_Shutdown( void ) {
 	Cmd_RemoveCommand ("ingamecinematic");
 	Cmd_RemoveCommand ("coop_waitjoin");
 	Cmd_RemoveCommand ("coop_waitcam");
+	Cmd_RemoveCommand ("coop_invite");
 	Cmd_RemoveCommand ("uimenu");
 	Cmd_RemoveCommand ("datapad");
 	Cmd_RemoveCommand ("endscreendissolve");
