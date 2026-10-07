@@ -1946,14 +1946,18 @@ static int CreateNextSaveName(char *fileName)
 {
 	int i;
 
-	// Loop through all the save games and look for the first open name
+	// Loop through all the save games and look for the first open name.
+	// coop: name slots after the map being saved (hoth2_03) instead of the
+	// anonymous jedi_03 - makes the saves/ folder readable too.
+	char info[MAX_INFO_STRING];
+	ui.GetConfigString( CS_SERVERINFO, info, sizeof( info ) );
+	const char *psMap = Info_ValueForKey( info, "mapname" );
+	char sBase[32];
+	Q_strncpyz( sBase, *psMap ? psMap : "jedi", sizeof( sBase ) );
+
 	for (i=0;i<MAX_SAVELOADFILES;i++)
 	{
-#ifdef JK2_MODE
-		Com_sprintf( fileName, MAX_SAVELOADNAME, "jkii%02d", i );
-#else
-		Com_sprintf( fileName, MAX_SAVELOADNAME, "jedi_%02d", i );
-#endif
+		Com_sprintf( fileName, MAX_SAVELOADNAME, "%s_%02d", sBase, i );
 
 		if (!ui.SG_GetSaveGameComment(fileName, NULL, NULL))
 		{
