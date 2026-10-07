@@ -6664,6 +6664,10 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 				else if ( targ->health < 1 && attacker->client )
 				{	// The player or NPC just killed an enemy so increment the kills counter
 					attacker->client->ps.persistant[PERS_ENEMIES_KILLED]++;
+					if ( G_CoopIsPlayer( attacker ) )
+					{	// coop: scoreboard
+						G_CoopBroadcastStats();
+					}
 				}
 			}
 			else if ( targTeam == TEAM_PLAYER )

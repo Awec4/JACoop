@@ -5698,6 +5698,7 @@ static const char *g_bindCommands[] = {
 	"+attack",
 	"+back",
 	"+coop_revive",	// coop: bindable from the controls menus
+	"+coop_score",	// coop: hold-to-view scoreboard
 #ifndef JK2_MODE
 	"+force_drain",
 #endif
@@ -5719,6 +5720,8 @@ static const char *g_bindCommands[] = {
 	"+useforce",
 	"centerview",
 	"cg_thirdperson !",
+	"coop_cometome",	// coop: teleport beside a living teammate
+	"coop_ping",	// coop: waypoint ping, bindable from the controls menus
 	"datapad",
 	"exitview",
 #ifndef JK2_MODE

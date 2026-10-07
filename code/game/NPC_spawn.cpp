@@ -1278,6 +1278,13 @@ void NPC_Begin (gentity_t *ent)
 	{
 		client->ps.stats[STAT_HEALTH] = ent->max_health = ent->health;
 	}
+	// coop: scale enemy hit points for bigger parties (g_coopEnemyHealth)
+	extern cvar_t *g_coopEnemyHealth;
+	if ( g_coopEnemyHealth && g_coopEnemyHealth->value > 0.0f && g_coopEnemyHealth->value != 1.0f
+		&& ent->client->playerTeam == TEAM_ENEMY && ent->max_health > 0 )
+	{
+		ent->health = ent->max_health = client->ps.stats[STAT_HEALTH] = (int)ceilf( ent->max_health * g_coopEnemyHealth->value );
+	}
 	ChangeWeapon( ent, ent->client->ps.weapon );//yes, again... sigh
 
 	if ( !(ent->spawnflags & SFB_STARTINSOLID) )
