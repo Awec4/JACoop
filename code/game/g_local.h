@@ -389,6 +389,7 @@ gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle, qboolean copyt
 void G_SpawnItem (gentity_t *ent, gitem_t *item);
 void FinishSpawningItem( gentity_t *ent );
 void	Add_Ammo (gentity_t *ent, int weapon, int count);
+int		Add_Ammo2 (gentity_t *ent, int ammoType, int count);	// coop: pickup sharing
 void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace);
 
 void ClearRegisteredItems( void );
@@ -439,6 +440,10 @@ void G_CoopResetDowned( void );
 qboolean G_CoopDownedActive( void );
 qboolean G_CoopIsDowned( const gentity_t *ent );
 qboolean G_CoopIsUp( const gentity_t *ent );
+void	G_CoopCatchupCommand( gentity_t *ent );	// coop_cometome
+void	G_CoopQChatCommand( gentity_t *ent );	// coop_qchat <n>
+void	G_CoopBroadcastStats( void );	// coop: scoreboard rows to every player
+void	G_CoopSharePickup( const gentity_t *item, gentity_t *toucher );	// coop: g_coopPickupShare
 qboolean G_CoopAnyPlayerUp( void );
 void G_CoopReviveCancel( gentity_t *reviver );
 void G_CoopClearDowned( gentity_t *ent );
@@ -493,6 +498,7 @@ void G_CoopStoreState( gentity_t *ent );
 void G_CoopStoreAll( void );
 void G_CoopOnJoinerBegin( gentity_t *ent );
 void G_CoopForceCommand( gentity_t *ent );
+void G_CoopPingCommand( gentity_t *ent );	// coop: waypoint ping where the player aims
 void G_CoopStartCommand( gentity_t *ent, const char *cmd );
 int G_CoopForcePointsAvailable( const gentity_t *ent );
 void G_CoopForceGrantPoint( void );				// end of mission: one force point for everybody
