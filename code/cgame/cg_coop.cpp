@@ -2422,6 +2422,25 @@ static const char *CG_CoopJumpKeyName( void )
 	return coopJumpKey;
 }
 
+// name of the key bound to +use ("E"): holding it while dead asks for the
+// checkpoint spawn instead of beside a teammate (G_CoopDownedThink)
+static char		coopUseKey[32];
+static int		coopUseKeyTime;
+static const char *CG_CoopUseKeyName( void )
+{
+	if ( cg.time - coopUseKeyTime > 1000 || !coopUseKey[0] )
+	{
+		coopUseKeyTime = cg.time;
+		cgi_Key_BindingKeyName( "+use", coopUseKey, sizeof( coopUseKey ) );
+		if ( !coopUseKey[0] )
+		{
+			Q_strncpyz( coopUseKey, G_CoopTr( "UTILISER", "USE" ), sizeof( coopUseKey ) );
+		}
+		Q_strupr( coopUseKey );
+	}
+	return coopUseKey;
+}
+
 // from CG_CalcViewValues: qtrue when org/angles now look at a teammate
 qboolean CG_CoopSpectate( vec3_t org, vec3_t angles )
 {
@@ -2496,6 +2515,50 @@ static void CG_CoopDrawCentered( float y, const char *text, const vec4_t color, 
 	cgi_R_Font_DrawString( 320 - w / 2, y, text, color, font, -1, scale );
 }
 
+// pin a world-space direction to the screen edge: which side of the edge is
+// where to turn. Shared by the waypoint pings and the downed-mate markers.
+static void CG_CoopEdgePoint( const vec3_t trans, float *ex, float *ey )
+{
+	float	dx = -DotProduct( trans, cg.refdef.viewaxis[1] );
+	float	dy = -DotProduct( trans, cg.refdef.viewaxis[2] );
+	if ( DotProduct( trans, cg.refdef.viewaxis[0] ) <= 0.001f )
+	{	// behind: mirror, so the marker sits on the side we must turn to
+		dx = -dx;
+		dy = -dy;
+	}
+	const float	len = sqrtf( dx * dx + dy * dy );
+	if ( len < 0.001f )
+	{
+		dx = 0;
+		dy = -1;
+	}
+	else
+	{
+		dx /= len;
+		dy /= len;
+	}
+	const float	m = 30;
+	float		t = 1e9f;
+	if ( dx > 0.001f )
+	{
+		t = ( 640 - m - 320 ) / dx;
+	}
+	else if ( dx < -0.001f )
+	{
+		t = ( m - 320 ) / dx;
+	}
+	if ( dy > 0.001f && ( 480 - m - 240 ) / dy < t )
+	{
+		t = ( 480 - m - 240 ) / dy;
+	}
+	else if ( dy < -0.001f && ( m - 240 ) / dy < t )
+	{
+		t = ( m - 240 ) / dy;
+	}
+	*ex = 320 + dx * t;
+	*ey = 240 + dy * t;
+}
+
 void CG_CoopDrawDowned( void )
 {
 	static const vec4_t red = { 1, 0.15f, 0.1f, 1 };
@@ -2553,6 +2616,17 @@ void CG_CoopDrawDowned( void )
 			CG_DrawPic( x - 12, y - 28, 24, 24, coopDownedIcon );
 			cgi_R_Font_DrawString( x - w / 2, y - 2, label, red, small, -1, 0.9f );
 		}
+		else
+		{	// off screen: pin the icon to the edge toward the body
+			vec3_t	trans;
+			float	ex, ey;
+			VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, trans );
+			CG_CoopEdgePoint( trans, &ex, &ey );
+			CG_DrawPic( ex - 8, ey - 8, 16, 16, coopDownedIcon );
+			const char *label = va( G_CoopTr( "A TERRE  %i m", "DOWN  %i m" ), (int)( dist / 32 ) );
+			const int	w = cgi_R_Font_StrLenPixels( label, small, 0.8f );
+			cgi_R_Font_DrawString( Com_Clamp( 4, 636 - w, ex - w / 2 ), Com_Clamp( 4, 460, ey + 10 ), label, red, small, -1, 0.8f );
+		}
 	}
 	cgi_R_SetAspect2D( 1 );
 
@@ -2604,6 +2678,7 @@ void CG_CoopDrawDowned( void )
 	{	// dead, watching a teammate until the respawn (CG_CoopSpectate)
 		CG_CoopDrawCentered( 400, G_CoopTr( "SPECTATEUR  -  retour pres d'un coequipier dans quelques secondes", "SPECTATING  -  back beside a teammate in a few seconds" ), white, small, 1.0f );
 		CG_CoopDrawCentered( 418, G_CoopTr( "Souris : tourner autour   -   Tir : joueur suivant", "Mouse: look around   -   Attack: next player" ), dim, small, 0.9f );
+		CG_CoopDrawCentered( 434, va( G_CoopTr( "Maintenir %s : reapparaitre au point de controle", "Hold %s: respawn at the checkpoint" ), CG_CoopUseKeyName() ), dim, small, 0.9f );
 		return;
 	}
 
@@ -2616,6 +2691,66 @@ void CG_CoopDrawDowned( void )
 	{	// beside someone on the ground (same measure as the host: player origin to body, g_coopReviveRange)
 		CG_CoopDrawCentered( 300, va( G_CoopTr( "Maintenir %s pour relever", "Hold %s to revive" ), CG_CoopReviveKeyName() ), white, font, 1.0f );
 	}
+}
+
+/*
+==============================================================================
+Teammate nametags
+
+A name and a health bar floating over each living teammate, through walls:
+nobody has to ask "who is that / is he about to die". Downed mates keep
+their louder marker; dead ones are corpses. cg_coopTags 0 hides the overlay.
+==============================================================================
+*/
+void CG_CoopDrawNametags( void )
+{
+	if ( !cg_coopTags.integer || !cg.snap || in_camera || cg.missionStatusShow || coopAllDownShown )
+	{
+		return;
+	}
+	const playerState_t	*ps = &cg.snap->ps;
+	const int			small = cgs.media.qhFontSmall;
+
+	cgi_R_SetAspect2D( 0 );
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		const centity_t		*cent = &cg_entities[k];
+		const entityState_t	*s = &cent->currentState;
+		if ( k == ps->clientNum || !cent->currentValid || s->eType != ET_PLAYER
+			|| s->coopHealth <= 0 || ( s->powerups & ( 1 << PW_COOP_DOWNED ) ) )
+		{
+			continue;	// dead or downed teammates already have their markers
+		}
+		const char	*cs = CG_ConfigString( CS_PLAYERS + k );
+		const char	*name = cs[0] ? Info_ValueForKey( cs, "n" ) : "";
+		if ( !name[0] )
+		{
+			continue;
+		}
+		const float dist = Distance( cg.refdef.vieworg, cent->lerpOrigin );
+		if ( dist < 48.0f || dist > 2200.0f )
+		{
+			continue;	// hugging the camera: noise; across the map: clutter
+		}
+		vec3_t	org;
+		float	x, y;
+		VectorCopy( cent->lerpOrigin, org );
+		org[2] += 60;
+		if ( !CG_WorldCoordToScreenCoordFloat( org, &x, &y ) )
+		{
+			continue;	// behind the camera
+		}
+		const float alpha = Com_Clamp( 0.35f, 0.95f, 1.0f - dist / 2400.0f );
+		vec4_t		nameCol = { 1, 1, 1, alpha };
+		const int	w = cgi_R_Font_StrLenPixels( name, small, 0.8f );
+		cgi_R_Font_DrawString( x - w / 2, y - 14, name, nameCol, small, -1, 0.8f );
+
+		const float frac = s->coopMaxHealth > 0
+			? Com_Clamp( 0.0f, 1.0f, (float)s->coopHealth / s->coopMaxHealth ) : 1.0f;
+		vec4_t	fill = { 1.0f - frac, 0.2f + 0.7f * frac, 0.15f, alpha };
+		CG_CoopDrawBar( x - 18, y - 10, 36, 4, frac, fill );
+	}
+	cgi_R_SetAspect2D( 1 );
 }
 
 /*
@@ -2681,4 +2816,213 @@ void CG_CoopSound_f( void )
 			cgi_S_StartSound( NULL, entNum, channel, cgi_S_RegisterSound( path ) );
 		}
 	}
+}
+
+/*
+==============================================================================
+Waypoint pings ("ping <slot> \"<name>\" <x> <y> <z>" - G_CoopPingCommand)
+
+A teammate aimed at a spot and tapped its ping key: one live ping per
+player, ~10 s, a new one replaces the old. On screen: a diamond over the
+spot with who pinged and how far; off screen or behind: a smaller diamond
+pinned to the edge it sits off, with the distance.
+==============================================================================
+*/
+#define COOP_PING_MS	10000
+
+typedef struct {
+	int		endTime;
+	vec3_t	pos;
+	char	name[36];
+} coopPing_t;
+
+static coopPing_t	coopPings[MAX_CLIENTS];
+
+void CG_CoopPing_f( void )
+{
+	if ( cgi_Argc() < 6 )
+	{
+		return;
+	}
+	const int	slot = atoi( CG_Argv( 1 ) );
+	if ( slot < 0 || slot >= MAX_CLIENTS )
+	{
+		return;
+	}
+	coopPing_t *p = &coopPings[slot];
+	p->endTime = cg.time + COOP_PING_MS;
+	p->pos[0] = atof( CG_Argv( 3 ) );
+	p->pos[1] = atof( CG_Argv( 4 ) );
+	p->pos[2] = atof( CG_Argv( 5 ) );
+	Q_strncpyz( p->name, CG_Argv( 2 ), sizeof( p->name ) );
+}
+
+void CG_CoopDrawPings( void )
+{
+	static const vec4_t	cyan = { 0.4f, 0.9f, 1.0f, 1.0f };
+	static const vec4_t	white = { 1, 1, 1, 1 };
+
+	if ( !cg.snap || in_camera || cg.missionStatusShow || coopAllDownShown )
+	{
+		return;
+	}
+
+	cgi_R_SetAspect2D( 0 );
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		const coopPing_t	*p = &coopPings[k];
+		const int			left = p->endTime - cg.time;
+		if ( left <= 0 )
+		{
+			continue;
+		}
+
+		vec4_t	col;
+		memcpy( col, cyan, sizeof( col ) );
+		if ( left < 1000 )
+		{	// fading out
+			col[3] *= left / 1000.0f;
+		}
+
+		const int	dist = (int)( Distance( cg.refdef.vieworg, p->pos ) / 32 );
+		vec3_t		trans, wpos;
+		VectorSubtract( p->pos, cg.refdef.vieworg, trans );
+		VectorCopy( p->pos, wpos );
+		const float	z = DotProduct( trans, cg.refdef.viewaxis[0] );	// ahead of us?
+
+		float	x, y;
+		if ( z > 0.001f && CG_WorldCoordToScreenCoordFloat( wpos, &x, &y )
+			&& x >= 8 && x <= 632 && y >= 8 && y <= 472 )
+		{	// on screen: a diamond over the spot, who + distance under it
+			cgi_R_SetColor( col );
+			CG_DrawRotatePic( x - 8, y - 8, 16, 16, 45.0f, cgs.media.whiteShader );
+			cgi_R_SetColor( white );
+
+			const char	*label = va( "%s  ^5%i m", p->name, dist );
+			const int	w = cgi_R_Font_StrLenPixels( label, cgs.media.qhFontSmall, 0.9f );
+			cgi_R_Font_DrawString( x - w / 2, y + 12, label, col, cgs.media.qhFontSmall, -1, 0.9f );
+		}
+		else
+		{	// off screen or behind us: pin the marker to the edge it sits off
+			float	ex, ey;
+			CG_CoopEdgePoint( trans, &ex, &ey );
+
+			cgi_R_SetColor( col );
+			CG_DrawRotatePic( ex - 6, ey - 6, 12, 12, 45.0f, cgs.media.whiteShader );
+			cgi_R_SetColor( white );
+
+			const char	*label = va( "%s  %i m", p->name, dist );
+			const int	w = cgi_R_Font_StrLenPixels( label, cgs.media.qhFontSmall, 0.8f );
+			const float	tx = Com_Clamp( 4, 636 - w, ex - w / 2 );
+			const float	ty = Com_Clamp( 4, 452, ey + 10 );
+			cgi_R_Font_DrawString( tx, ty, label, col, cgs.media.qhFontSmall, -1, 0.8f );
+		}
+	}
+	cgi_R_SetAspect2D( 1 );
+}
+
+/*
+==============================================================================
+Co-op scoreboard ("cstat" svcmd, shown while +coop_score is held)
+
+The server keeps the counters (kills ride along on PERS_ENEMIES_KILLED) and
+re-sends the whole table on every change; a "cstat <slot> \"\"" clears a row
+on disconnect.
+==============================================================================
+*/
+typedef struct {
+	char	name[36];
+	int		kills;
+	int		downs;
+	int		revives;
+	int		deaths;
+	int		ping;
+} coopStat_t;
+
+static coopStat_t	coopStats[MAX_CLIENTS];
+
+void CG_CoopStats_f( void )
+{
+	if ( cgi_Argc() < 8 )
+	{
+		return;
+	}
+	const int	slot = atoi( CG_Argv( 1 ) );
+	if ( slot < 0 || slot >= MAX_CLIENTS )
+	{
+		return;
+	}
+	coopStat_t	*s = &coopStats[slot];
+	Q_strncpyz( s->name, CG_Argv( 2 ), sizeof( s->name ) );
+	s->kills = atoi( CG_Argv( 3 ) );
+	s->downs = atoi( CG_Argv( 4 ) );
+	s->revives = atoi( CG_Argv( 5 ) );
+	s->deaths = atoi( CG_Argv( 6 ) );
+	s->ping = atoi( CG_Argv( 7 ) );
+}
+
+void CG_CoopDrawScoreboard( void )
+{
+	static const vec4_t	panel = { 0.02f, 0.02f, 0.05f, 0.55f };
+	static const vec4_t	head = { 0.85f, 0.82f, 0.72f, 0.9f };
+	static const vec4_t	rowCol = { 1, 1, 1, 0.9f };
+	static const vec4_t	meCol = { 0.4f, 1.0f, 0.4f, 1.0f };
+
+	if ( !cg.snap )
+	{
+		return;
+	}
+	const int	small = cgs.media.qhFontSmall;
+
+	// count the live rows, then size the little panel for them
+	int			rows = 0;
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		if ( coopStats[k].name[0] )
+		{
+			rows++;
+		}
+	}
+	if ( !rows )
+	{
+		return;
+	}
+	const int	rowH = 12;
+	const int	x0 = 4, x1 = 262;
+	const int	y0 = 40;
+	const char	*cols[6] = {
+		"",
+		G_CoopTr( "F", "K" ),		// frags / kills
+		G_CoopTr( "A", "D" ),		// a terre / downs
+		G_CoopTr( "R", "R" ),		// releves / revives
+		G_CoopTr( "M", "X" ),		// morts / deaths
+		"ms",
+	};
+	const int	colX[6] = { x0 + 6, x0 + 152, x0 + 176, x0 + 200, x0 + 224, x0 + 246 };
+
+	cgi_R_SetAspect2D( 0 );
+	CG_FillRect( x0, y0, x1 - x0, ( rows + 1 ) * rowH + 6, panel );
+
+	for ( int c = 1; c < 6; c++ )
+	{
+		cgi_R_Font_DrawString( colX[c], y0 + 2, cols[c], head, small, -1, 0.7f );
+	}
+	int	y = y0 + rowH + 3;
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		const coopStat_t	*s = &coopStats[k];
+		if ( !s->name[0] )
+		{
+			continue;
+		}
+		const vec4_t	*col = ( cg.snap->ps.clientNum == k ) ? &meCol : &rowCol;
+		cgi_R_Font_DrawString( colX[0], y, s->name, *col, small, -1, 0.75f );
+		cgi_R_Font_DrawString( colX[1], y, va( "%i", s->kills ), *col, small, -1, 0.75f );
+		cgi_R_Font_DrawString( colX[2], y, va( "%i", s->downs ), *col, small, -1, 0.75f );
+		cgi_R_Font_DrawString( colX[3], y, va( "%i", s->revives ), *col, small, -1, 0.75f );
+		cgi_R_Font_DrawString( colX[4], y, va( "%i", s->deaths ), *col, small, -1, 0.75f );
+		cgi_R_Font_DrawString( colX[5], y, va( "%i", s->ping ), *col, small, -1, 0.75f );
+		y += rowH;
+	}
+	cgi_R_SetAspect2D( 1 );
 }

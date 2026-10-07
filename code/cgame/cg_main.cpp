@@ -268,6 +268,8 @@ vmCvar_t	cg_shadows;
 vmCvar_t	cg_remoteClientCvar;	// coop: mirrors the engine cg_remoteClient cvar
 vmCvar_t	cg_coopPaksGen;			// coop: mirrors the engine cl_coopPaksGen cvar (pk3 transfer)
 vmCvar_t	cg_coopHud;				// coop: 1 = the JACoop HUD, 0 = the stock hud.menu
+vmCvar_t	cg_coopScore;			// coop: 1 while +coop_score is held (scoreboard)
+vmCvar_t	cg_coopTags;			// coop: 1 = name + health bar over living teammates
 vmCvar_t	cg_chatBox;				// coop: chat line lifetime in ms (0 = hide box)
 vmCvar_t	cg_chatBoxHeight;		// coop: bottom Y of the chat stack
 vmCvar_t	cg_renderToTextureFX;
@@ -483,6 +485,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_remoteClientCvar, "cg_remoteClient", "0", CVAR_ROM },
 	{ &cg_coopPaksGen, "cl_coopPaksGen", "0", CVAR_ROM },
 	{ &cg_coopHud, "cg_coopHud", "1", CVAR_ARCHIVE },
+	{ &cg_coopScore, "cg_coopScore", "1", CVAR_ARCHIVE },	// coop: persistent mini scoreboard; +coop_score toggles it
+	{ &cg_coopTags, "cg_coopTags", "1", CVAR_ARCHIVE },	// coop: name + health bar over living teammates
 	// coop: on-screen chat box (same defaults as multiplayer)
 	{ &cg_chatBox, "cg_chatBox", "10000", CVAR_ARCHIVE },
 	{ &cg_chatBoxHeight, "cg_chatBoxHeight", "350", CVAR_ARCHIVE },

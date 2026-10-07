@@ -4489,6 +4489,12 @@ static void CG_Draw2D( void )
 	if ( !CG_DrawScoreboard() ) {
 		CG_DrawCenterString();
 		CG_CoopDrawDowned();	// coop: downed / revive overlay and teammate markers
+		CG_CoopDrawPings();		// coop: teammate waypoint pings
+		CG_CoopDrawNametags();	// coop: name + health over living teammates
+		if ( cg_coopScore.integer )
+		{
+			CG_CoopDrawScoreboard();	// coop: +coop_score held
+		}
 	}
 
 	CG_ChatBox_DrawStrings();	// coop: in-game chat box (always on top of HUD)
