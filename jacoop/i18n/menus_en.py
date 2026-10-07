@@ -193,6 +193,9 @@ EN = {
     'Champ de vision :': 'Field of view:',
     'Valeur de reference en 4/3 : sur un ecran large elle est elargie toute seule, tu n as rien a compenser.':
         'Reference value for 4:3: on a wide screen it widens by itself, nothing to compensate.',
+    'Ping (touche) :': 'Ping (key):',
+    'Pose un marqueur ou tu vises, vu par tous (clic molette par defaut).':
+        'Drop a marker where you aim, seen by everyone (middle mouse by default).',
 
     # --- options : HOTE
     'Joueurs max :': 'Max players:',
@@ -222,6 +225,12 @@ EN = {
     'Sync ragdoll :': 'Ragdoll sync:',
     'Envoie la pose des corps aux invites (20 fois par seconde, ~250 octets par corps) : la meme chez tous.':
         'Sends the pose of bodies to guests (20 times a second, ~250 bytes per body): the same for everyone.',
+    'Mode versus :': 'Versus mode:',
+    'Les invites peuvent passer dans le camp ennemi et traquer les jedi (bouton CHANGER DE CAMP du menu F6).':
+        'Guests can switch to the enemy side and hunt the jedi (CHANGE SIDE button in the F6 menu).',
+    'CHANGER DE CAMP': 'CHANGE SIDE',
+    'Rejoindre les ennemis et traquer les jedi, ou revenir chez les jedi.':
+        'Join the enemies and hunt the jedi, or come back to the jedi.',
 
     # --- options : RENDU MODERNE
     'Rendu moderne :': 'Modern rendering:',

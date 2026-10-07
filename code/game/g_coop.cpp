@@ -2370,6 +2370,10 @@ void G_CoopVersusTeamCommand( gentity_t *ent )
 	{
 		want = TEAM_ENEMY;
 	}
+	else if ( !Q_stricmp( arg, "toggle" ) )
+	{	// the F6 button does not know which side we are on: flip
+		want = ( ent->client->sess.sessionTeam == TEAM_ENEMY ) ? TEAM_FREE : TEAM_ENEMY;
+	}
 	else if ( Q_stricmp( arg, "jedi" ) && Q_stricmp( arg, "ally" ) && Q_stricmp( arg, "good" ) )
 	{
 		gi.SendServerCommand( ent->s.number, "print \"usage: coop_team jedi|enemy\n\"" );

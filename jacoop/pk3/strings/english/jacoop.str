@@ -102,8 +102,8 @@ LANG_ENGLISH        "Everyone votes: the majority wins, the host decides a tie."
 REFERENCE           CHAMP_DE_VISION
 LANG_ENGLISH        "Field of view:"
 
-REFERENCE           CHAT_TOUCHE
-LANG_ENGLISH        "Chat (key):"
+REFERENCE           CHANGER_DE_CAMP
+LANG_ENGLISH        "CHANGE SIDE"
 
 REFERENCE           CHANGER_DE_MODELE_OU_DE_SKIN_TOUT_DE_SUI
 LANG_ENGLISH        "Change model or skin right away, even in game."
@@ -432,6 +432,9 @@ LANG_ENGLISH        "Other players see your saber if they have the same pk3 (it 
 REFERENCE           LES_INVITES_CREENT_LEUR_PERSONNAGE_LA_PA
 LANG_ENGLISH        "The guests are creating their characters... the game starts once everyone has confirmed."
 
+REFERENCE           LES_INVITES_PEUVENT_PASSER_DANS_LE_CAMP
+LANG_ENGLISH        "Guests can switch to the enemy side and hunt the jedi (CHANGE SIDE button in the F6 menu)."
+
 REFERENCE           LES_JOUEURS_PEUVENT_SE_BLESSER_ET_SE_TUE
 LANG_ENGLISH        "Players can hurt and kill each other."
 
@@ -518,6 +521,9 @@ LANG_ENGLISH        "MISSION COMPLETE"
 
 REFERENCE           MODELE
 LANG_ENGLISH        "MODEL"
+
+REFERENCE           MODE_VERSUS
+LANG_ENGLISH        "Versus mode:"
 
 REFERENCE           MOITIE
 LANG_ENGLISH        "Half"
@@ -645,6 +651,9 @@ LANG_ENGLISH        "Characters and doors:"
 REFERENCE           PERSOS_VALIDES
 LANG_ENGLISH        "Characters confirmed"
 
+REFERENCE           PING_TOUCHE
+LANG_ENGLISH        "Ping (key):"
+
 REFERENCE           PLEINE
 LANG_ENGLISH        "Full"
 
@@ -662,6 +671,9 @@ LANG_ENGLISH        "Range beyond map:"
 
 REFERENCE           PORTRAIT
 LANG_ENGLISH        "PORTRAIT"
+
+REFERENCE           POSE_UN_MARQUEUR_OU_TU_VISES_VU_PAR_TOUS
+LANG_ENGLISH        "Drop a marker where you aim, seen by everyone (middle mouse by default)."
 
 REFERENCE           POUR_JUGER_UN_EFFET_ISOLEMENT_A_REMETTRE
 LANG_ENGLISH        "To judge one effect on its own. Set it back to The game to play."
@@ -786,6 +798,9 @@ LANG_ENGLISH        "Join a friend's game (local network or Internet address)."
 REFERENCE           REJOINDRE_LA_PARTIE_SELECTIONNEE
 LANG_ENGLISH        "Join the selected game."
 
+REFERENCE           REJOINDRE_LES_ENNEMIS_ET_TRAQUER_LES_JED
+LANG_ENGLISH        "Join the enemies and hunt the jedi, or come back to the jedi."
+
 REFERENCE           REJOINDRE_L_HOTE
 LANG_ENGLISH        "GO TO THE HOST"
 
@@ -891,9 +906,6 @@ LANG_ENGLISH        "CO-OP LOBBY"
 REFERENCE           SALON_JOUEURS
 LANG_ENGLISH        "LOBBY / PLAYERS"
 
-REFERENCE           SAY
-LANG_ENGLISH        "Say:"
-
 REFERENCE           SERRE_16
 LANG_ENGLISH        "Tight (16)"
 
@@ -932,9 +944,6 @@ LANG_ENGLISH        "Your name, as the other players see it (lobby, messages)."
 
 REFERENCE           TOUCHE_A_MAINTENIR_PRES_D_UN_COEQUIPIER
 LANG_ENGLISH        "Key to hold next to a downed teammate to revive them (G by default)."
-
-REFERENCE           TOUCHE_QUI_OUVRE_LE_CHAT_EN_JEU
-LANG_ENGLISH        "Key that opens in-game chat (Y by default if it was free)."
 
 REFERENCE           TOUCHE_QUI_OUVRE_LE_MENU_COOPERATION_EN
 LANG_ENGLISH        "Key that opens the CO-OP menu in game (F6 by default if it was free)."

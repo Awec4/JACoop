@@ -2050,6 +2050,17 @@ static qboolean UI_RunMenuScript ( const char **args )
 			}
 			return qtrue;
 		}
+		if ( !Q_stricmp( name, "coopVersus" ) )
+		{
+			// Joiner, versus mode: swap sides, and go back to the game. The server
+			// decides what "toggle" means (it knows our current side).
+			trap_Key_SetCatcher( trap_Key_GetCatcher() & ~KEYCATCH_UI );
+			trap_Key_ClearStates();
+			Cvar_Set( "cl_paused", "0" );
+			Menus_CloseAll();
+			ui.Cmd_ExecuteText( EXEC_APPEND, "cmd coop_team toggle\n" );
+			return qtrue;
+		}
 		if ( !Q_stricmp( name, "coopSaberInit" ) )
 		{
 			UI_CoopSaberInit();
@@ -2887,6 +2898,11 @@ static qboolean UI_RunMenuScript ( const char **args )
 			UI_CoopLobbyState();
 			// F6 page: a solo game not yet opened to friends can be (OUVRIR AUX AMIS)
 			Cvar_Set( "ui_coopCanHost", ( com_sv_running && com_sv_running->integer && !Cvar_VariableIntegerValue( "net_enabled" ) ) ? "1" : "0" );
+			// versus: the CHANGER DE CAMP button only exists for a joiner while the host allows it
+			char	info[MAX_INFO_STRING];
+			ui.GetConfigString( CS_SERVERINFO, info, sizeof( info ) );
+			Cvar_Set( "ui_coopVersus", ( atoi( Info_ValueForKey( info, "g_coopVersus" ) ) > 0
+				&& !( com_sv_running && com_sv_running->integer ) ) ? "1" : "0" );
 		}
 		else if ( Q_stricmp( name, "coopTeleport" ) == 0 )
 		{
