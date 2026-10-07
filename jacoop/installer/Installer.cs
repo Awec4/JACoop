@@ -24,6 +24,58 @@ internal static class Installer
         { "zz_jacoop.pk3",           "base" },
     };
 
+    // build id baked in at compile time (resource "version.txt", set via
+    // build-installer.ps1 -Version; CI passes the commit sha)
+    internal static string Build
+    {
+        get
+        {
+            try
+            {
+                using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("version.txt"))
+                using (StreamReader r = new StreamReader(s))
+                    return (r.ReadLine() ?? "local").Trim();
+            }
+            catch { return "local"; }
+        }
+    }
+
+    private static byte[] GetPayload(string name)
+    {
+        using (Stream res = Assembly.GetExecutingAssembly().GetManifestResourceStream(name))
+        {
+            if (res == null) return null;
+            using (MemoryStream ms = new MemoryStream())
+            {
+                res.CopyTo(ms);
+                return ms.ToArray();
+            }
+        }
+    }
+
+    // true when every payload on disk is byte-identical to what this exe carries
+    private static bool UpToDate(string dest)
+    {
+        string[,] check =
+        {
+            { "openjk_sp.x86_64.exe",    ""     },
+            { "rdsp-vanilla_x86_64.dll", ""     },
+            { "jagamex86_64.dll",        ""     },
+            { "zz_jacoop.pk3",           "base" },
+        };
+        for (int i = 0; i < check.GetLength(0); i++)
+        {
+            string p = check[i, 1].Length == 0
+                ? Path.Combine(dest, check[i, 0])
+                : Path.Combine(dest, check[i, 1], check[i, 0]);
+            byte[] payload = GetPayload(check[i, 0]);
+            if (payload == null || !File.Exists(p)) return false;
+            using (FileStream fs = File.OpenRead(p))
+                if (!Md5(fs).Equals(Md5(new MemoryStream(payload)))) return false;
+        }
+        return true;
+    }
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -61,7 +113,6 @@ internal static class Installer
     // Returns true on success; progress/errors go to log.
     internal static bool Install(string dest, TextWriter log)
     {
-        Assembly asm = Assembly.GetExecutingAssembly();
         try
         {
             Directory.CreateDirectory(Path.Combine(dest, "bin"));
@@ -88,19 +139,11 @@ internal static class Installer
                     File.Copy(dst, Path.Combine(bak, name), true);
                 }
 
-                byte[] payload;
-                using (Stream res = asm.GetManifestResourceStream(name))
+                byte[] payload = GetPayload(name);
+                if (payload == null)
                 {
-                    if (res == null)
-                    {
-                        log.WriteLine("ERROR: embedded file missing: " + name);
-                        return false;
-                    }
-                    using (MemoryStream ms = new MemoryStream())
-                    {
-                        res.CopyTo(ms);
-                        payload = ms.ToArray();
-                    }
+                    log.WriteLine("ERROR: embedded file missing: " + name);
+                    return false;
                 }
                 File.WriteAllBytes(dst, payload);
 
@@ -116,9 +159,10 @@ internal static class Installer
                 log.WriteLine("installed  " + dst);
             }
 
+            File.WriteAllText(Path.Combine(dest, "jacoop-version.txt"), Build + "\n");
             if (madeBackup)
                 log.WriteLine("previous files backed up to " + bak);
-            log.WriteLine("done.");
+            log.WriteLine("done. build " + Build);
             return true;
         }
         catch (Exception ex)
@@ -140,7 +184,10 @@ internal static class Installer
         private readonly TextBox pathBox;
         private readonly TextBox logBox;
         private readonly Button installButton;
+        private readonly Button launchButton;
         private readonly Label statusLabel;
+        private string checkedDir;      // cache so UpdateStatus does not re-hash on every keystroke
+        private bool checkedUpToDate;
 
         internal InstallerForm()
         {
@@ -178,9 +225,18 @@ internal static class Installer
             };
             installButton.Click += delegate { DoInstall(); };
 
+            launchButton = new Button
+            {
+                Text = "Launch JACoop",
+                Location = new Point(140, 66),
+                Width = 120,
+                Visible = false,
+            };
+            launchButton.Click += delegate { Launch(); };
+
             statusLabel = new Label
             {
-                Location = new Point(140, 71),
+                Location = new Point(268, 71),
                 AutoSize = true,
                 ForeColor = Color.DarkOrange,
             };
@@ -199,6 +255,7 @@ internal static class Installer
             Controls.Add(pathBox);
             Controls.Add(browse);
             Controls.Add(installButton);
+            Controls.Add(launchButton);
             Controls.Add(statusLabel);
             Controls.Add(logBox);
 
@@ -209,19 +266,45 @@ internal static class Installer
         private void UpdateStatus()
         {
             string dir = pathBox.Text.Trim().Trim('"');
+            launchButton.Visible = dir.Length > 0 && File.Exists(Path.Combine(dir, "JACoop.exe"));
             if (dir.Length == 0)
             {
                 statusLabel.Text = "";
             }
             else if (LooksLikeJACoop(dir))
             {
+                if (dir != checkedDir) { checkedUpToDate = UpToDate(dir); checkedDir = dir; }
                 statusLabel.ForeColor = Color.ForestGreen;
-                statusLabel.Text = "looks like a JACoop install";
+                statusLabel.Text = checkedUpToDate
+                    ? "already up to date - build " + ShortBuild()
+                    : "JACoop install found - update available";
             }
             else
             {
                 statusLabel.ForeColor = Color.DarkOrange;
                 statusLabel.Text = "not recognised - check the path";
+            }
+        }
+
+        private static string ShortBuild()
+        {
+            return Build.Length > 10 ? Build.Substring(0, 10) : Build;
+        }
+
+        private void Launch()
+        {
+            string dir = pathBox.Text.Trim().Trim('"');
+            string exe = Path.Combine(dir, "JACoop.exe");
+            try
+            {
+                System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo { FileName = exe, WorkingDirectory = dir });
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Could not start " + exe + "\n" + ex.Message,
+                    "JACoop installer", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -264,11 +347,11 @@ internal static class Installer
             StringWriter log = new StringWriter();
             bool ok = Install(dir, log);
             logBox.Text = log.ToString();
+            checkedDir = null;      // force re-check in UpdateStatus
 
             if (ok)
             {
-                statusLabel.ForeColor = Color.ForestGreen;
-                statusLabel.Text = "update installed";
+                UpdateStatus();
                 MessageBox.Show(this, "JACoop is up to date. Have fun!",
                     "JACoop installer", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
