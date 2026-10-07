@@ -2467,6 +2467,7 @@ typedef struct usercmd_s {
 #define COOPF_DRAIN_AREA			( 1 << 24 )	// forceDrainEntityNum >= ENTITYNUM_WORLD (sweep, not a grab)
 #define COOPF_PUSH_LHAND			( 1 << 25 )	// ps.powerups[PW_FORCE_PUSH] running
 #define COOPF_PUSH_RHAND			( 1 << 26 )	// ps.powerups[PW_FORCE_PUSH_RHAND] running
+#define COOPF_DUAL_PISTOLS			( 1 << 27 )	// client->dualPistols - remote cgame adds the left-hand gun
 
 // coop: s.modelindex2 of a broadcast ET_THINKER the remote cgame must think for
 #define COOP_THINKER_MATRIX			1			// G_StartMatrixEffect (otherEntityNum2 = viewer, ENTITYNUM_NONE = everyone)

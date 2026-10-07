@@ -1267,10 +1267,21 @@ void CG_CoopSyncCharacter( centity_t *cent )
 			else if ( s->weapon > WP_NONE && s->weapon < WP_NUM_WEAPONS && weaponData[s->weapon].weaponMdl[0] )
 			{
 				G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handRBolt, 0 );
+				if ( ( s->weapon == WP_BLASTER_PISTOL || s->weapon == WP_BRYAR_PISTOL )
+					&& ( s->coopForce & COOPF_DUAL_PISTOLS ) )
+				{//dual pistols
+					G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handLBolt, 1 );
+				}
 			}
 			st->weapon = s->weapon;
 			st->inFlight = qfalse;
 			st->hiltRetryAt = 0;
+		}
+		else if ( ( s->weapon == WP_BLASTER_PISTOL || s->weapon == WP_BRYAR_PISTOL )
+			&& ( s->coopForce & COOPF_DUAL_PISTOLS )
+			&& gent->weaponModel[1] <= 0 && gent->handLBolt >= 0 )
+		{//picked up the second pistol while already holding one - same weapon, no swap ran
+			G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handLBolt, 1 );
 		}
 		else if ( wantSaber && !hiltLive && gent->handRBolt >= 0 && cg.time >= st->hiltRetryAt )
 		{

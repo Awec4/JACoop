@@ -315,6 +315,10 @@ void G_CoopUpdateAppearance( gentity_t *ent )
 		{
 			f |= COOPF_PUSH_RHAND;
 		}
+		if ( ent->client->dualPistols )
+		{
+			f |= COOPF_DUAL_PISTOLS;
+		}
 		ent->s.coopForce = f;
 		// victim electrocution: the wire bit sticks on corpses, the timer decides
 		ent->s.coopShockTime = ps->powerups[PW_SHOCKED];

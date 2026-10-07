@@ -1995,6 +1995,11 @@ void G_AddWeaponModels( gentity_t *ent )
 		else if ( ent->client->ps.weapon != WP_NONE )
 		{
 			G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handRBolt, 0 );
+			if ( (ent->client->ps.weapon == WP_BLASTER_PISTOL || ent->client->ps.weapon == WP_BRYAR_PISTOL)
+				&& ent->client->dualPistols )
+			{//dual pistols
+				G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handLBolt, 1 );
+			}
 		}
 	}
 }
@@ -2608,6 +2613,11 @@ qboolean ClientSpawn(gentity_t *ent, SavedGameJustLoaded_e eSavedGameJustLoaded 
 		if ( ent->weaponModel[0] == -1 && ent->client->ps.weapon != WP_NONE )
 		{
 			G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handRBolt, 0 );
+			if ( (ent->client->ps.weapon == WP_BLASTER_PISTOL || ent->client->ps.weapon == WP_BRYAR_PISTOL)
+				&& ent->client->dualPistols )
+			{//dual pistols
+				G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handLBolt, 1 );
+			}
 		}
 
 		if ( index == 0 )

@@ -9109,6 +9109,12 @@ static void PM_FinishWeaponChange( void ) {
 			G_RemoveWeaponModels( pm->gent );
 			if (weaponData[weapon].weaponMdl[0]) {	//might be NONE, so check if it has a model
 				G_CreateG2AttachedWeaponModel( pm->gent, weaponData[weapon].weaponMdl, pm->gent->handRBolt, 0 );
+				if ( (weapon == WP_BLASTER_PISTOL || weapon == WP_BRYAR_PISTOL)
+					&& pm->gent->client
+					&& pm->gent->client->dualPistols )
+				{//dual pistols
+					G_CreateG2AttachedWeaponModel( pm->gent, weaponData[weapon].weaponMdl, pm->gent->handLBolt, 1 );
+				}
 			}
 		}
 
