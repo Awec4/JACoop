@@ -832,7 +832,10 @@ Ghoul2 Insert End
 // coop: end of a mission, shared by the host with everybody (g_coop_endlevel.cpp):
 // "<phase>\t<title>\t<stats>\t<info>|<map>\t<label>\t<votes>\t<voters>|..."
 #define CS_COOP_ENDLEVEL		(CS_COOP_SOUNDSETS + MAX_COOP_SOUNDSETS)
-#define CS_MAX					(CS_COOP_ENDLEVEL + 1)
+// coop: host's movement rules ("1" = multiplayer physics), so remote client
+// prediction in cg_predict.cpp runs the same numbers as the server's game
+#define CS_COOP_PHYSICS			(CS_COOP_ENDLEVEL + 1)
+#define CS_MAX					(CS_COOP_PHYSICS + 1)
 
 #if (CS_MAX) > MAX_CONFIGSTRINGS
 #error overflow: (CS_MAX) > MAX_CONFIGSTRINGS

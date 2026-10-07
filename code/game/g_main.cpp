@@ -2167,6 +2167,10 @@ void G_RunFrame( int levelTime ) {
 	G_CoopDownedFrame();	// coop: bleed-out clocks, everyone-down flow
 	G_CoopRunRespawns();	// coop: bring dead players back beside a teammate
 	{
+		extern void G_CoopPhysicsFrame( void );
+		G_CoopPhysicsFrame();	// coop: g_mpPhysics -> bg_mpPhysics + CS_COOP_PHYSICS
+	}
+	{
 		extern void G_CoopSaberWatch( void );
 		G_CoopSaberWatch();	// coop: note the moment a player's saber goes away
 	}

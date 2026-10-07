@@ -2113,6 +2113,7 @@ cvar_t	*g_coopSkipCinematics;	// 1 = the host auto-skips every cinematic for eve
 cvar_t	*g_coopCatchup;		// 1 = coop_cometome teleports you beside a living teammate
 cvar_t	*g_coopPickupShare;	// percent of ammo/health/armor pickups shared with nearby teammates
 cvar_t	*g_coopEnemyHealth;	// enemy NPC hit points scale (1.0 = stock)
+cvar_t	*g_mpPhysics;		// 1 = multiplayer movement constants for every player
 
 void G_CoopInitDownedCvars( void )
 {
@@ -2133,9 +2134,34 @@ void G_CoopInitDownedCvars( void )
 	g_coopCatchup = gi.cvar( "g_coopCatchup", "1", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	g_coopPickupShare = gi.cvar( "g_coopPickupShare", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	g_coopEnemyHealth = gi.cvar( "g_coopEnemyHealth", "1", CVAR_ARCHIVE );
+	// serverinfo: joiners read the movement rules in CS_COOP_PHYSICS for prediction
+	g_mpPhysics = gi.cvar( "g_mpPhysics", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	memset( coopStatDowns, 0, sizeof( coopStatDowns ) );
 	memset( coopStatRevives, 0, sizeof( coopStatRevives ) );
 	memset( coopStatDeaths, 0, sizeof( coopStatDeaths ) );
+}
+
+/*
+==============================================================================
+Movement physics (g_mpPhysics)
+
+bg_pmove reads the bg_mpPhysics flag every move. The host's game sets it from
+the cvar here; joiners set it in cg_predict.cpp from CS_COOP_PHYSICS, so client
+prediction and server simulation agree whichever mode the host picked.
+==============================================================================
+*/
+
+void G_CoopPhysicsFrame( void )
+{
+	static int	csState = -1;
+	const int	mp = g_mpPhysics->integer > 0;
+
+	bg_mpPhysics = (qboolean)mp;
+	if ( mp != csState )
+	{
+		csState = mp;
+		gi.SetConfigstring( CS_COOP_PHYSICS, mp ? "1" : "0" );
+	}
 }
 
 /*

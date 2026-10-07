@@ -702,6 +702,9 @@ void CG_PredictPlayerState( void ) {
 		return;
 	}
 
+	// coop: run prediction with the host's movement rules (g_mpPhysics)
+	bg_mpPhysics = (qboolean)( atoi( CG_ConfigString( CS_COOP_PHYSICS ) ) != 0 );
+
 	// run cmds
 	do {
 		// check for a prediction error from last frame

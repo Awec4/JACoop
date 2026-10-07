@@ -769,4 +769,9 @@ void PlayerStateToEntityState( playerState_t *ps, entityState_t *s );
 
 qboolean	BG_PlayerTouchesItem( playerState_t *ps, entityState_t *item, int atTime );
 
+// coop: 1 = multiplayer movement constants (g_mpPhysics); the host's game sets
+// it from the cvar, remote cgame sets it from CS_COOP_PHYSICS so prediction
+// and the server run the same numbers
+extern qboolean	bg_mpPhysics;
+
 #endif//#ifndef __BG_PUBLIC_H__
