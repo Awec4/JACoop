@@ -3554,46 +3554,56 @@ static void CG_DrawCrosshairNames( void )
 }
 
 //--------------------------------------------------------------
+static qboolean CG_IsDurationPower( int power )
+{
+	return (qboolean)( power == FP_HEAL || power == FP_SPEED || power == FP_TELEPATHY
+		|| power == FP_RAGE || power == FP_PROTECT || power == FP_ABSORB || power == FP_SEE );
+}
+
 static void CG_DrawActivePowers(void)
 //--------------------------------------------------------------
 {
-	int icon_size = 40;
-	int startx = icon_size*2+16;
-	int starty = SCREEN_HEIGHT - icon_size*2;
-
-	int endx = icon_size;
-	int endy = icon_size;
+	// coop HUD: a slim row just above the weapon icon, bottom-left. Stock HUD:
+	// Raven's original spot (its cluster leaves that strip free).
+	int icon_size, startx, starty;
+	if ( cg_coopHud.integer )
+	{
+		icon_size = 26;
+		startx = COOP_HUD_MARGIN;
+		starty = SCREEN_HEIGHT - 96;
+	}
+	else
+	{
+		icon_size = 40;
+		startx = icon_size*2+16;
+		starty = SCREEN_HEIGHT - icon_size*2;
+	}
+	const int x0 = startx;
 
 	if (cg.zoomMode)
 	{ //don't display over zoom mask
 		return;
 	}
 
-	/*
 	//draw icon for duration powers so we know what powers are active cuttently
-	int i = 0;
-	while (i < NUM_FORCE_POWERS)
+	for ( int i = 0; i < NUM_FORCE_POWERS; i++ )
 	{
-		if ((cg.snap->ps.forcePowersActive & (1 << forcePowerSorted[i])) &&
-			CG_IsDurationPower(forcePowerSorted[i]))
+		if ( ( cg.snap->ps.forcePowersActive & ( 1 << i ) ) && CG_IsDurationPower( i ) && force_icons[i] )
 		{
-			CG_DrawPic( startx, starty, endx, endy, cgs.media.forcePowerIcons[forcePowerSorted[i]]);
-			startx += (icon_size+2); //+2 for spacing
-			if ((startx+icon_size) >= SCREEN_WIDTH-80)
+			CG_DrawPic( startx, starty, icon_size, icon_size, force_icons[i] );
+			startx += ( icon_size + 2 ); //+2 for spacing
+			if ( ( startx + icon_size ) >= SCREEN_WIDTH - 80 )
 			{
-				startx = icon_size*2+16;
-				starty += (icon_size+2);
+				startx = x0;
+				starty += ( icon_size + 2 );
 			}
 		}
-
-		i++;
 	}
-	*/
 
 	//additionally, draw an icon force force rage recovery
 	if (cg.snap->ps.forceRageRecoveryTime > cg.time)
 	{
-		CG_DrawPic( startx, starty, endx, endy, cgs.media.rageRecShader);
+		CG_DrawPic( startx, starty, icon_size, icon_size, cgs.media.rageRecShader);
 	}
 }
 
