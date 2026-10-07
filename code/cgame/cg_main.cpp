@@ -270,6 +270,7 @@ vmCvar_t	cg_coopPaksGen;			// coop: mirrors the engine cl_coopPaksGen cvar (pk3 
 vmCvar_t	cg_coopHud;				// coop: 1 = the JACoop HUD, 0 = the stock hud.menu
 vmCvar_t	cg_coopScore;			// coop: 1 while +coop_score is held (scoreboard)
 vmCvar_t	cg_coopTags;			// coop: 1 = name + health bar over living teammates
+vmCvar_t	cg_coopVoiceTalk;		// coop voice: talker bitmask + TX flag (engine-written)
 vmCvar_t	cg_chatBox;				// coop: chat line lifetime in ms (0 = hide box)
 vmCvar_t	cg_chatBoxHeight;		// coop: bottom Y of the chat stack
 vmCvar_t	cg_renderToTextureFX;
@@ -487,6 +488,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_coopHud, "cg_coopHud", "1", CVAR_ARCHIVE },
 	{ &cg_coopScore, "cg_coopScore", "1", CVAR_ARCHIVE },	// coop: persistent mini scoreboard; +coop_score toggles it
 	{ &cg_coopTags, "cg_coopTags", "1", CVAR_ARCHIVE },	// coop: name + health bar over living teammates
+	{ &cg_coopVoiceTalk, "cg_coopVoiceTalk", "0", CVAR_TEMP },	// coop voice: who is talking + local TX
 	// coop: on-screen chat box (same defaults as multiplayer)
 	{ &cg_chatBox, "cg_chatBox", "10000", CVAR_ARCHIVE },
 	{ &cg_chatBoxHeight, "cg_chatBoxHeight", "350", CVAR_ARCHIVE },

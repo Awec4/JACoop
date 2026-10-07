@@ -123,6 +123,7 @@ if(BuildSPEngine OR BuildJK2SPEngine)
 		"${SPDir}/client/cl_cin.cpp"
 		"${SPDir}/client/cl_console.cpp"
 		"${SPDir}/client/cl_coop_transfer.cpp"
+		"${SPDir}/client/cl_coopvoice.cpp"
 		"${SPDir}/client/cl_input.cpp"
 		"${SPDir}/client/cl_keys.cpp"
 		"${SPDir}/client/cl_main.cpp"

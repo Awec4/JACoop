@@ -569,6 +569,7 @@ extern	vmCvar_t		cg_coopPaksGen;		// coop: engine cl_coopPaksGen, bumped when a 
 extern	vmCvar_t		cg_coopHud;			// coop: 1 = the JACoop HUD, 0 = the stock hud.menu
 extern	vmCvar_t		cg_coopScore;		// coop: persistent mini scoreboard; +coop_score toggles
 extern	vmCvar_t		cg_coopTags;		// coop: 1 = name + health over living teammates
+extern	vmCvar_t		cg_coopVoiceTalk;	// coop voice: talker bitmask + TX flag (written by the engine)
 extern	vmCvar_t		cg_chatBox;			// coop: ms to keep each chat line on screen (0 = off)
 extern	vmCvar_t		cg_chatBoxHeight;	// coop: bottom Y of the chat box stack
 // coop: the local player's playerState for HUD/view reads: the gentity's on the host,

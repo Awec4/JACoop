@@ -2710,6 +2710,7 @@ void CG_CoopDrawNametags( void )
 	}
 	const playerState_t	*ps = &cg.snap->ps;
 	const int			small = cgs.media.qhFontSmall;
+	const int			talkBits = cg_coopVoiceTalk.integer;	// coop voice: slot bits + TX flag (bit 30)
 
 	cgi_R_SetAspect2D( 0 );
 	for ( int k = 0; k < MAX_CLIENTS; k++ )
@@ -2742,6 +2743,12 @@ void CG_CoopDrawNametags( void )
 		}
 		const float alpha = Com_Clamp( 0.35f, 0.95f, 1.0f - dist / 2400.0f );
 		vec4_t		nameCol = { 1, 1, 1, alpha };
+		if ( talkBits & ( 1 << k ) )
+		{
+			nameCol[0] = 0.4f;	// green while they are talking
+			nameCol[1] = 1.0f;
+			nameCol[2] = 0.4f;
+		}
 		const int	w = cgi_R_Font_StrLenPixels( name, small, 0.8f );
 		cgi_R_Font_DrawString( x - w / 2, y - 14, name, nameCol, small, -1, 0.8f );
 
@@ -2749,6 +2756,11 @@ void CG_CoopDrawNametags( void )
 			? Com_Clamp( 0.0f, 1.0f, (float)s->coopHealth / s->coopMaxHealth ) : 1.0f;
 		vec4_t	fill = { 1.0f - frac, 0.2f + 0.7f * frac, 0.15f, alpha };
 		CG_CoopDrawBar( x - 18, y - 10, 36, 4, frac, fill );
+	}
+	if ( talkBits & ( 1 << 30 ) )	// engine sets this while +coop_voice transmits
+	{
+		const vec4_t	voxCol = { 0.4f, 1.0f, 0.4f, 0.9f };
+		cgi_R_Font_DrawString( SCREEN_WIDTH - 40, SCREEN_HEIGHT - 28, "VOX", voxCol, small, -1, 0.9f );
 	}
 	cgi_R_SetAspect2D( 1 );
 }
@@ -2988,7 +3000,7 @@ void CG_CoopDrawScoreboard( void )
 		return;
 	}
 	const int	rowH = 12;
-	const int	x0 = 4, x1 = 262;
+	const int	x1 = 636, x0 = x1 - 258;	// coop: docked to the right edge
 	const int	y0 = 40;
 	const char	*cols[6] = {
 		"",

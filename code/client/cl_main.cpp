@@ -1129,6 +1129,12 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 		return;
 	}
 
+	// coop: host-relayed voice chunk (binary payload follows the command line)
+	if ( !strcmp(c, "cvoice") ) {
+		CL_CoopVoice_Packet( from, msg );
+		return;
+	}
+
 
 	Com_DPrintf ("Unknown connectionless packet command.\n");
 }
@@ -1332,6 +1338,9 @@ void CL_Frame ( int msec,float fractionMsec ) {
 
 	// coop: pk3 transfer timeouts and status line
 	CL_CoopTransferFrame();
+
+	// coop: voice capture/playback pump
+	CL_CoopVoice_Frame( msec );
 
 	// send intentions now
 	CL_SendCmd();
@@ -1915,6 +1924,7 @@ void CL_Init( void ) {
 	}
 	Cvar_Get( "coop_ready", "0", CVAR_USERINFO );
 	CL_CoopTransferInit();	// coop: host -> joiner pk3 transfer cvars
+	CL_CoopVoice_Init();	// coop: push-to-talk voice cvars/commands
 
 	//
 	// register our commands
@@ -1994,6 +2004,8 @@ void CL_Shutdown( void ) {
 	Cmd_RemoveCommand ("uimenu");
 	Cmd_RemoveCommand ("datapad");
 	Cmd_RemoveCommand ("endscreendissolve");
+
+	CL_CoopVoice_Shutdown();
 
 	Cvar_Set( "cl_running", "0" );
 

@@ -233,10 +233,9 @@ void SVC_Status( netadr_t from ) {
 			} else {
 				score = 0;
 			}
-			// coop: format is score ping "name" (Q3/server-browser). SP client_t has
-			// no ping field — passing only (score, name) made %s read garbage and
-			// crash in ucrtbase whenever anything sent getstatus (LAN browser, etc.).
-			Com_sprintf( player, sizeof( player ), "%i %i \"%s\"\n", score, 0, cl->name );
+			// coop: format is score ping "name" (Q3/server-browser). cl->ping is
+			// the smoothed RTT SV_ReadPackets keeps, 0 for the local host client.
+			Com_sprintf( player, sizeof( player ), "%i %i \"%s\"\n", score, cl->ping, cl->name );
 			playerLength = strlen(player);
 			if (statusLength + playerLength >= (int)sizeof(status) ) {
 				break;		// can't hold any more
@@ -290,6 +289,64 @@ static void SVC_Info( netadr_t from ) {
 
 /*
 =================
+SVC_CoopVoice
+
+coop voice relay: an in-game client sent "cvoice\n" + [u8][u16 len][adpcm].
+Stamp the sender's slot, rate-limit, and forward to every other active client
+(the host's loopback client gets joiner audio the same way).
+=================
+*/
+static void SVC_CoopVoice( netadr_t from, msg_t *msg ) {
+	static int	voiceWindow, voiceCount[MAX_CLIENTS];
+	int			i, sender = -1;
+
+	for ( i = 0 ; i < MAX_CLIENTS ; i++ ) {
+		if ( svs.clients[i].state >= CS_ACTIVE
+			&& NET_CompareAdr( from, svs.clients[i].netchan.remoteAddress ) ) {
+			sender = i;
+			break;
+		}
+	}
+	if ( sender < 0 ) {
+		return;	// only connected players may talk
+	}
+	if ( Sys_Milliseconds() - voiceWindow >= 1000 ) {
+		voiceWindow = Sys_Milliseconds();
+		memset( voiceCount, 0, sizeof( voiceCount ) );
+	}
+	if ( ++voiceCount[sender] > 30 ) {
+		return;	// ~30 x 100ms chunks/sec is already generous
+	}
+
+	const int	body = msg->cursize - msg->readcount;
+	if ( body < 3 || body > 3 + 560 ) {
+		return;
+	}
+	byte	hdr[3];
+	MSG_ReadData( msg, hdr, sizeof( hdr ) );
+	const int	payloadLen = hdr[1] | ( hdr[2] << 8 );
+	if ( payloadLen != body - 3 ) {
+		return;
+	}
+
+	byte	out[4 + 7 + 3 + 560];
+	*(int *)( out ) = -1;
+	memcpy( out + 4, "cvoice\n", 7 );
+	out[11] = (byte)sender;
+	out[12] = (byte)( payloadLen & 0xff );
+	out[13] = (byte)( payloadLen >> 8 );
+	memcpy( out + 14, msg->data + msg->readcount, payloadLen );
+
+	for ( i = 0 ; i < MAX_CLIENTS ; i++ ) {
+		if ( i != sender && svs.clients[i].state >= CS_ACTIVE ) {
+			NET_SendPacket( NS_SERVER, 14 + payloadLen, out,
+				svs.clients[i].netchan.remoteAddress );
+		}
+	}
+}
+
+/*
+=================
 SV_ConnectionlessPacket
 
 A connectionless packet has four leading 0xff
@@ -322,6 +379,8 @@ static void SV_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 		// if a client starts up a local server, we may see some spurious
 		// server disconnect messages when their new server sees our final
 		// sequenced messages to the old client
+	} else if (!strcmp(c,"cvoice")) {
+		SVC_CoopVoice( from, msg );
 	} else {
 		Com_DPrintf ("bad connectionless packet from %s:\n%s\n"
 		, NET_AdrToString (from), s);
@@ -385,6 +444,20 @@ void SV_PacketEvent( netadr_t from, msg_t *msg ) {
 				cl->lastPacketTime = sv.time;	// don't timeout
 				cl->frames[ cl->netchan.incomingAcknowledged & PACKET_MASK ]
 					.messageAcked = sv.time;
+				// coop: a real RTT - how long the acked snapshot was in the air
+				// (same math Q3's ping uses), smoothed so one packet spike moves it less
+				{
+					clientSnapshot_t *frame = &cl->frames[ cl->netchan.incomingAcknowledged & PACKET_MASK ];
+					if ( frame->messageSent && frame->messageAcked > frame->messageSent )
+					{
+						const int p = frame->messageAcked - frame->messageSent;
+						cl->ping = cl->ping ? ( cl->ping * 3 + p ) / 4 : p;
+						if ( cl->gentity && cl->gentity->client )
+						{	// gentity->client is the entity's playerState here
+							cl->gentity->client->ping = cl->ping;
+						}
+					}
+				}
 				SV_ExecuteClientMessage( cl, msg );
 			}
 		}

@@ -1059,9 +1059,19 @@ void Key_CoopDefaultBinds( void )
 	{
 		Key_CoopDefaultBind( "y", "messagemode" );
 	}
-	if ( ( done->integer & 7 ) != 7 )
+	// coop: MOUSE3 drops a waypoint ping everyone sees (coop_ping); bit 8
+	if ( !( done->integer & 8 ) )
 	{
-		Cvar_Set( "coop_bindsInit", "7" );
+		Key_CoopDefaultBind( "MOUSE3", "coop_ping" );
+	}
+	// coop: V is push-to-talk (+coop_voice); bit 16
+	if ( !( done->integer & 16 ) )
+	{
+		Key_CoopDefaultBind( "v", "+coop_voice" );
+	}
+	if ( ( done->integer & 31 ) != 31 )
+	{
+		Cvar_Set( "coop_bindsInit", "31" );
 	}
 }
 

@@ -456,6 +456,14 @@ void CL_CoopTransferFrame( void );
 void CL_CoopTransferAbort( void );
 void CL_CoopCheckPaksGen( void );
 
+//
+// cl_coopvoice.cpp (coop: push-to-talk voice)
+//
+void CL_CoopVoice_Init( void );
+void CL_CoopVoice_Shutdown( void );
+void CL_CoopVoice_Frame( int msec );
+void CL_CoopVoice_Packet( netadr_t from, msg_t *msg );
+
 //====================================================================
 
 //
