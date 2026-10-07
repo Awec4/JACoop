@@ -2975,8 +2975,9 @@ void CG_CoopStats_f( void )
 
 void CG_CoopDrawScoreboard( void )
 {
-	static const vec4_t	panel = { 0.02f, 0.02f, 0.05f, 0.55f };
-	static const vec4_t	head = { 0.85f, 0.82f, 0.72f, 0.9f };
+	static const vec4_t	panel = { 0.02f, 0.02f, 0.05f, 0.45f };
+	static const vec4_t	head = { 0.85f, 0.82f, 0.72f, 0.8f };
+	static const vec4_t	hairline = { 0.85f, 0.82f, 0.72f, 0.22f };
 	static const vec4_t	rowCol = { 1, 1, 1, 0.9f };
 	static const vec4_t	meCol = { 0.4f, 1.0f, 0.4f, 1.0f };
 
@@ -2986,21 +2987,29 @@ void CG_CoopDrawScoreboard( void )
 	}
 	const int	small = cgs.media.qhFontSmall;
 
-	// count the live rows, then size the little panel for them
-	int			rows = 0;
+	// gather the live rows, best score first
+	int			order[MAX_CLIENTS], rows = 0;
 	for ( int k = 0; k < MAX_CLIENTS; k++ )
 	{
 		if ( coopStats[k].name[0] )
 		{
-			rows++;
+			int	i = rows++;
+			while ( i > 0 && ( coopStats[order[i - 1]].kills < coopStats[k].kills
+				|| ( coopStats[order[i - 1]].kills == coopStats[k].kills
+					&& coopStats[order[i - 1]].deaths > coopStats[k].deaths ) ) )
+			{
+				order[i] = order[i - 1];
+				i--;
+			}
+			order[i] = k;
 		}
 	}
 	if ( !rows )
 	{
 		return;
 	}
-	const int	rowH = 12;
-	const int	x1 = 636, x0 = x1 - 258;	// coop: docked to the right edge
+	const int	rowH = 10;
+	const int	x1 = 636, x0 = x1 - 206;	// coop: slim panel, docked to the right edge
 	const int	y0 = 40;
 	const char	*cols[6] = {
 		"",
@@ -3010,30 +3019,34 @@ void CG_CoopDrawScoreboard( void )
 		G_CoopTr( "M", "X" ),		// morts / deaths
 		"ms",
 	};
-	const int	colX[6] = { x0 + 6, x0 + 152, x0 + 176, x0 + 200, x0 + 224, x0 + 246 };
+	// right edge of each numeric column (the name hugs the left, max 112px)
+	const int	colR[6] = { 0, x0 + 140, x0 + 158, x0 + 176, x0 + 194, x1 - 6 };
 
 	cgi_R_SetAspect2D( 0 );
-	CG_FillRect( x0, y0, x1 - x0, ( rows + 1 ) * rowH + 6, panel );
+	CG_FillRect( x0, y0, x1 - x0, ( rows + 1 ) * rowH + 4, panel );
 
 	for ( int c = 1; c < 6; c++ )
 	{
-		cgi_R_Font_DrawString( colX[c], y0 + 2, cols[c], head, small, -1, 0.7f );
+		const int	w = cgi_R_Font_StrLenPixels( cols[c], small, 0.6f );
+		cgi_R_Font_DrawString( colR[c] - w, y0 + 2, cols[c], head, small, -1, 0.6f );
 	}
+	CG_FillRect( x0 + 4, y0 + rowH, x1 - x0 - 8, 1, hairline );
+
 	int	y = y0 + rowH + 3;
-	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	for ( int r = 0; r < rows; r++ )
 	{
-		const coopStat_t	*s = &coopStats[k];
-		if ( !s->name[0] )
+		const coopStat_t	*s = &coopStats[order[r]];
+		const vec4_t	*col = ( cg.snap->ps.clientNum == order[r] ) ? &meCol : &rowCol;
+		const char		*num[5] = {
+			va( "%i", s->kills ), va( "%i", s->downs ), va( "%i", s->revives ),
+			va( "%i", s->deaths ), va( "%i", s->ping ),
+		};
+		cgi_R_Font_DrawString( x0 + 6, y, s->name, *col, small, 112, 0.7f );
+		for ( int c = 0; c < 5; c++ )
 		{
-			continue;
+			const int	w = cgi_R_Font_StrLenPixels( num[c], small, 0.7f );
+			cgi_R_Font_DrawString( colR[c + 1] - w, y, num[c], *col, small, -1, 0.7f );
 		}
-		const vec4_t	*col = ( cg.snap->ps.clientNum == k ) ? &meCol : &rowCol;
-		cgi_R_Font_DrawString( colX[0], y, s->name, *col, small, -1, 0.75f );
-		cgi_R_Font_DrawString( colX[1], y, va( "%i", s->kills ), *col, small, -1, 0.75f );
-		cgi_R_Font_DrawString( colX[2], y, va( "%i", s->downs ), *col, small, -1, 0.75f );
-		cgi_R_Font_DrawString( colX[3], y, va( "%i", s->revives ), *col, small, -1, 0.75f );
-		cgi_R_Font_DrawString( colX[4], y, va( "%i", s->deaths ), *col, small, -1, 0.75f );
-		cgi_R_Font_DrawString( colX[5], y, va( "%i", s->ping ), *col, small, -1, 0.75f );
 		y += rowH;
 	}
 	cgi_R_SetAspect2D( 1 );
