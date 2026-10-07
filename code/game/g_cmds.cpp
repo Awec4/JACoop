@@ -1451,6 +1451,26 @@ void ClientCommand( int clientNum ) {
 		Cmd_Say_f( ent );	// coop: in-game chat from messagemode
 		return;
 	}
+	if (Q_stricmp (cmd, "coop_ping") == 0)
+	{
+		G_CoopPingCommand( ent );	// coop: waypoint ping, marker broadcast to every player
+		return;
+	}
+	if (Q_stricmp (cmd, "coop_team") == 0)
+	{
+		G_CoopVersusTeamCommand( ent );	// coop versus: pick jedi/enemy side
+		return;
+	}
+	if (Q_stricmp (cmd, "coop_cometome") == 0)
+	{
+		G_CoopCatchupCommand( ent );	// coop: teleport beside a living teammate
+		return;
+	}
+	if (Q_stricmp (cmd, "coop_qchat") == 0)
+	{
+		G_CoopQChatCommand( ent );	// coop: preset chat line, bindable
+		return;
+	}
 	if (Q_stricmp (cmd, "coopforce") == 0)
 	{
 		G_CoopForceCommand( ent );	// coop: a joiner allocated its force points

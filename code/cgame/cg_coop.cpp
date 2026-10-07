@@ -2711,6 +2711,8 @@ void CG_CoopDrawNametags( void )
 	const playerState_t	*ps = &cg.snap->ps;
 	const int			small = cgs.media.qhFontSmall;
 	const int			talkBits = cg_coopVoiceTalk.integer;	// coop voice: slot bits + TX flag (bit 30)
+	const char			*myCs = CG_ConfigString( CS_PLAYERS + ps->clientNum );
+	const qboolean		imEnemy = (qboolean)( atoi( Info_ValueForKey( myCs, "t" ) ) == TEAM_ENEMY );	// versus: which side I'm on
 
 	cgi_R_SetAspect2D( 0 );
 	for ( int k = 0; k < MAX_CLIENTS; k++ )
@@ -2728,6 +2730,7 @@ void CG_CoopDrawNametags( void )
 		{
 			continue;
 		}
+		const qboolean	enemySide = (qboolean)( ( atoi( Info_ValueForKey( cs, "t" ) ) == TEAM_ENEMY ) != imEnemy );	// versus: the other side
 		const float dist = Distance( cg.refdef.vieworg, cent->lerpOrigin );
 		if ( dist < 48.0f || dist > 4000.0f )
 		{
@@ -2739,6 +2742,10 @@ void CG_CoopDrawNametags( void )
 		org[2] += 60;
 		if ( !CG_WorldCoordToScreenCoordFloat( org, &x, &y ) || x < 4 || x > 636 || y < 4 || y > 476 )
 		{
+			if ( enemySide )
+			{
+				continue;	// versus: hunters stay hidden until they're on screen
+			}
 			// offscreen teammate: pin the name to the screen edge in their
 			// direction so the group can find each other without wandering
 			if ( dist < 60.0f )
@@ -2771,9 +2778,27 @@ void CG_CoopDrawNametags( void )
 		{
 			continue;
 		}
+		if ( enemySide )
+		{	// versus: no wallhack either - the tag needs clear line of sight
+			vec3_t	mid;
+			trace_t	tr;
+			VectorCopy( cent->lerpOrigin, mid );
+			mid[2] += 36;	// torso height - feet can sit inside a step
+			CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, mid, ps->clientNum, MASK_SOLID );
+			if ( tr.entityNum != k )
+			{
+				continue;
+			}
+		}
 		const float alpha = Com_Clamp( 0.35f, 0.95f, 1.0f - dist / 2400.0f );
 		vec4_t		nameCol = { 1, 1, 1, alpha };
-		if ( talkBits & ( 1 << k ) )
+		if ( enemySide )
+		{
+			nameCol[0] = 1.0f;	// versus hunter reads red
+			nameCol[1] = 0.35f;
+			nameCol[2] = 0.3f;
+		}
+		else if ( talkBits & ( 1 << k ) )
 		{
 			nameCol[0] = 0.4f;	// green while they are talking
 			nameCol[1] = 1.0f;
@@ -3010,6 +3035,7 @@ void CG_CoopDrawScoreboard( void )
 	static const vec4_t	hairline = { 0.85f, 0.82f, 0.72f, 0.22f };
 	static const vec4_t	rowCol = { 1, 1, 1, 0.9f };
 	static const vec4_t	meCol = { 0.4f, 1.0f, 0.4f, 1.0f };
+	static const vec4_t	enemyCol = { 1.0f, 0.35f, 0.3f, 0.9f };	// versus: hunters read red
 
 	if ( !cg.snap )
 	{
@@ -3081,7 +3107,9 @@ void CG_CoopDrawScoreboard( void )
 	for ( int r = 0; r < rows; r++ )
 	{
 		const coopStat_t	*s = &coopStats[order[r]];
-		const vec4_t	*col = ( cg.snap->ps.clientNum == order[r] ) ? &meCol : &rowCol;
+		const char		*pcs = CG_ConfigString( CS_PLAYERS + order[r] );
+		const vec4_t	*col = ( cg.snap->ps.clientNum == order[r] ) ? &meCol
+			: ( atoi( Info_ValueForKey( pcs, "t" ) ) == TEAM_ENEMY ) ? &enemyCol : &rowCol;
 		const char		*num[5] = {
 			va( "%i", s->kills ), va( "%i", s->downs ), va( "%i", s->revives ),
 			va( "%i", s->deaths ), va( "%i", s->ping ),

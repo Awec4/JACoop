@@ -450,6 +450,10 @@ void G_CoopClearDowned( gentity_t *ent );
 qboolean G_CoopTryDown( gentity_t *targ, gentity_t *attacker, int mod, int dflags );
 int G_CoopFriendlyFireScale( const gentity_t *targ, const gentity_t *attacker );	// -1 = not a player vs player hit
 qboolean G_CoopFriendlyFireOn( const gentity_t *targ, const gentity_t *attacker );
+qboolean G_CoopVersusOn( void );	// g_coopVersus
+team_t	G_CoopSideOf( const gentity_t *ent );	// versus: which side a player fights on
+qboolean G_CoopIsVersusEnemy( const gentity_t *ent );	// versus: player on TEAM_ENEMY
+void G_CoopVersusTeamCommand( gentity_t *ent );	// coop: coop_team jedi|enemy
 void G_CoopAnnounceKill( const gentity_t *victim, const gentity_t *attacker, qboolean downed );
 void G_CoopDownedThink( gentity_t *ent, usercmd_t *ucmd );
 void G_CoopDownedFrame( void );

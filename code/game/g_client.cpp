@@ -2417,6 +2417,11 @@ qboolean ClientSpawn(gentity_t *ent, SavedGameJustLoaded_e eSavedGameJustLoaded 
 		}
 		client->playerTeam = TEAM_PLAYER;
 		client->enemyTeam = TEAM_ENEMY;
+		if ( G_CoopIsVersusEnemy( ent ) )
+		{	// coop versus: this player hunts the Jedi, alongside the NPCs
+			client->playerTeam = TEAM_ENEMY;
+			client->enemyTeam = TEAM_PLAYER;
+		}
 		ent->contents = CONTENTS_BODY;
 		ent->clipmask = MASK_PLAYERSOLID;
 		ent->e_DieFunc = dieF_player_die;
@@ -2687,6 +2692,15 @@ void ClientDisconnect( int clientNum ) {
 	ent->client->ps.persistant[PERS_TEAM] = TEAM_FREE;
 
 	gi.SetConfigstring( CS_PLAYERS + clientNum, "");
+
+	// coop: drop the slot's scoreboard row everywhere
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		if ( i != clientNum && G_CoopPlayerSlot( i ) )
+		{
+			gi.SendServerCommand( i, "cstat %i \"\" 0 0 0 0", clientNum );
+		}
+	}
 
 	IIcarusInterface::GetIcarus()->DeleteIcarusID(ent->m_iIcarusID);
 

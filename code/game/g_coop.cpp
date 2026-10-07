@@ -568,6 +568,10 @@ qboolean G_CoopAnyPlayerAlive( void )
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
 		const gentity_t *ent = &g_entities[i];
+		if ( G_CoopIsVersusEnemy( ent ) )
+		{
+			continue;	// versus: living hunters don't keep the mission alive
+		}
 		if ( ent->inuse && ent->client && ent->client->pers.connected == CON_CONNECTED && ent->health > 0 )
 		{
 			return qtrue;
@@ -627,11 +631,13 @@ gentity_t *G_CoopLivingTeammate( const gentity_t *self )
 {
 	gentity_t	*best = NULL;
 	float		bestDist = -1;
+	const team_t	mySide = G_CoopSideOf( self );	// versus: only respawn beside your own side
 
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
 		gentity_t *ent = &g_entities[i];
-		if ( ent == self || !G_CoopIsUp( ent ) )
+		if ( ent == self || !G_CoopIsUp( ent )
+			|| ( G_CoopVersusOn() && G_CoopSideOf( ent ) != mySide ) )
 		{
 			continue;
 		}
@@ -748,8 +754,8 @@ qboolean G_CoopPlayerDied( gentity_t *self )
 		return qfalse;
 	}
 	G_CoopClearDowned( self );
-	if ( !G_CoopLivingTeammate( self ) && !G_CoopDownedActive() )
-	{
+	if ( !G_CoopLivingTeammate( self ) && !G_CoopDownedActive() && !G_CoopIsVersusEnemy( self ) )
+	{	// hunters always respawn - the mission only ends when the Jedi do
 		return qfalse;	// last one standing in a plain game: the stock mission-failed screen
 	}
 	// with downed players the respawn waits for someone to be up again (G_CoopDownedFrame
@@ -955,6 +961,58 @@ void G_CoopPlaceBeside( gentity_t *ent, gentity_t *mate )
 	{
 		G_CoopPlaceEndPass();
 	}
+}
+
+// versus: a hunter respawns beside an enemy NPC near the jedi front instead of
+// trekking in from the map start - L4D2 director style. qfalse = nobody to
+// stand next to, keep whatever spawnpoint ClientSpawn picked.
+static qboolean G_CoopVersusPlace( gentity_t *ent )
+{
+	vec3_t	front;
+	qboolean haveFront = qfalse;
+	float	frontDist = -1;
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		gentity_t *jedi = &g_entities[i];
+		if ( !G_CoopIsUp( jedi ) || G_CoopIsVersusEnemy( jedi ) )
+		{
+			continue;
+		}
+		const float dist = DistanceSquared( ent->currentOrigin, jedi->currentOrigin );
+		if ( !haveFront || dist < frontDist )
+		{	// the standing jedi nearest where the hunter fell is the front
+			VectorCopy( jedi->currentOrigin, front );
+			frontDist = dist;
+			haveFront = qtrue;
+		}
+	}
+	if ( !haveFront )
+	{
+		VectorCopy( ent->currentOrigin, front );	// nobody standing: gather near the corpse
+	}
+
+	gentity_t	*best = NULL;
+	float		bestDist = -1;
+	for ( int i = MAX_CLIENTS; i < globals.num_entities; i++ )
+	{
+		gentity_t *npc = &g_entities[i];
+		if ( !npc->inuse || !npc->client || npc->health <= 0 || npc->client->playerTeam != TEAM_ENEMY )
+		{
+			continue;
+		}
+		const float dist = DistanceSquared( npc->currentOrigin, front );
+		if ( bestDist < 0 || dist < bestDist )
+		{
+			bestDist = dist;
+			best = npc;
+		}
+	}
+	if ( !best )
+	{
+		return qfalse;
+	}
+	G_CoopPlaceBeside( ent, best );
+	return qtrue;
 }
 
 /*
@@ -1218,6 +1276,10 @@ void G_CoopFollowHostTeleport( const vec3_t from )
 		{
 			continue;	// (a downed joiner keeps health 1 and follows: it stays revivable beside the host)
 		}
+		if ( G_CoopIsVersusEnemy( ent ) )
+		{
+			continue;	// versus: hunters don't follow the jedi's script teleports
+		}
 		if ( ent->client->ps.eFlags & EF_LOCKED_TO_WEAPON )
 		{
 			continue;
@@ -1242,8 +1304,9 @@ void G_CoopFollowHostTeleport( const vec3_t from )
 // locked a door with the joiner on the far side).
 void G_CoopTeleportCommand( gentity_t *ent )
 {
-	if ( !ent || !ent->client || ent->s.number >= MAX_CLIENTS || ent->health <= 0 || G_CoopIsDowned( ent ) )
-	{
+	if ( !ent || !ent->client || ent->s.number >= MAX_CLIENTS || ent->health <= 0 || G_CoopIsDowned( ent )
+		|| G_CoopIsVersusEnemy( ent ) )
+	{	// versus hunters hunt on foot - no teleporting onto the jedi
 		return;
 	}
 	gentity_t *target = NULL;
@@ -1352,7 +1415,11 @@ static void G_CoopRespawn( gentity_t *ent )
 	// come back beside a living teammate rather than at the map start -
 	// unless the player held USE while dead: plain checkpoint spawn then
 	// (the group may be standing in the fight that killed him)
-	if ( coopRespawnAtSpawn[slot] )
+	if ( G_CoopIsVersusEnemy( ent ) )
+	{
+		G_CoopVersusPlace( ent );	// hunter: materialize next to the NPCs near the front
+	}
+	else if ( coopRespawnAtSpawn[slot] )
 	{
 		G_CoopNote( va( "respawning %s at the checkpoint (USE held)", G_CoopEntName( ent ) ) );
 	}
@@ -2042,6 +2109,11 @@ void G_CoopClientBegin( const gentity_t *ent )
 		{
 			gi.SendServerCommand( ent->s.number, "ts %g", coopSentTimescale );
 		}
+		if ( G_CoopVersusOn() )
+		{	// versus: tell the joiner they can hunt instead of help
+			G_CoopPrintTr( ent->s.number, "print", "^3Mode versus^7 - ^5coop_team enemy^7 pour jouer les mechants.\n",
+				"^3Versus mode^7 - type ^5coop_team enemy^7 to hunt the jedi.\n" );
+		}
 	}
 	if ( ent->s.number >= 0 && ent->s.number < MAX_CLIENTS )
 	{
@@ -2114,6 +2186,7 @@ cvar_t	*g_coopCatchup;		// 1 = coop_cometome teleports you beside a living teamm
 cvar_t	*g_coopPickupShare;	// percent of ammo/health/armor pickups shared with nearby teammates
 cvar_t	*g_coopEnemyHealth;	// enemy NPC hit points scale (1.0 = stock)
 cvar_t	*g_mpPhysics;		// 1 = multiplayer movement constants for every player
+cvar_t	*g_coopVersus;		// 1 = players may join TEAM_ENEMY and hunt the Jedi (coop_team)
 
 void G_CoopInitDownedCvars( void )
 {
@@ -2136,6 +2209,8 @@ void G_CoopInitDownedCvars( void )
 	g_coopEnemyHealth = gi.cvar( "g_coopEnemyHealth", "1", CVAR_ARCHIVE );
 	// serverinfo: joiners read the movement rules in CS_COOP_PHYSICS for prediction
 	g_mpPhysics = gi.cvar( "g_mpPhysics", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	// serverinfo: versus sessions show up in server info and the scoreboard
+	g_coopVersus = gi.cvar( "g_coopVersus", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	memset( coopStatDowns, 0, sizeof( coopStatDowns ) );
 	memset( coopStatRevives, 0, sizeof( coopStatRevives ) );
 	memset( coopStatDeaths, 0, sizeof( coopStatDeaths ) );
@@ -2197,6 +2272,10 @@ int G_CoopFriendlyFireScale( const gentity_t *targ, const gentity_t *attacker )
 	{
 		return 0;	// never in the lobby
 	}
+	if ( G_CoopVersusOn() && G_CoopSideOf( targ ) != G_CoopSideOf( attacker ) )
+	{
+		return 100;	// versus: enemy players are a fair target regardless of the FF setting
+	}
 	switch ( g_coopFriendlyFire->integer )
 	{
 	case 0:		return 0;
@@ -2226,7 +2305,100 @@ void G_CoopAnnounceKill( const gentity_t *victim, const gentity_t *attacker, qbo
 	{
 		G_CoopPrintTr( -1, "print", "^1%s ^7a tue ^1%s\n", "^1%s ^7killed ^1%s\n", attacker->client->pers.netname, victim->client->pers.netname );
 	}
-	gi.Printf( "coop: team kill - %s %s %s\n", attacker->client->pers.netname, downed ? "downed" : "killed", victim->client->pers.netname );
+	gi.Printf( "coop: %s - %s %s %s\n",
+		( G_CoopVersusOn() && G_CoopSideOf( victim ) != G_CoopSideOf( attacker ) ) ? "versus kill" : "team kill",
+		attacker->client->pers.netname, downed ? "downed" : "killed", victim->client->pers.netname );
+}
+
+/*
+==============================================================================
+Versus mode (g_coopVersus)
+
+L4D2-flavoured: "coop_team enemy" respawns you on TEAM_ENEMY - NPCs treat you
+as one of theirs (playerTeam drives their targeting), Jedi shots on you always
+land (G_CoopFriendlyFireScale cross-team), and the all-down flow only watches
+the Jedi side. Your side rides in CS_PLAYERS "t" so cgame paints you red and
+hides your tag until they can actually see you.
+==============================================================================
+*/
+
+qboolean G_CoopVersusOn( void )
+{
+	return (qboolean)( g_coopVersus && g_coopVersus->integer );
+}
+
+// which side a player fights on in versus mode (TEAM_PLAYER when off)
+team_t G_CoopSideOf( const gentity_t *ent )
+{
+	if ( ent && ent->client && G_CoopVersusOn()
+		&& ent->client->sess.sessionTeam == TEAM_ENEMY )
+	{
+		return TEAM_ENEMY;
+	}
+	return TEAM_PLAYER;
+}
+
+qboolean G_CoopIsVersusEnemy( const gentity_t *ent )
+{
+	return (qboolean)( G_CoopIsPlayer( ent ) && G_CoopSideOf( ent ) == TEAM_ENEMY );
+}
+
+// coop_team jedi|enemy - pick a side; takes effect on the next spawn, or right
+// away if you are alive (a team swap is a fresh spawn, like dying)
+void G_CoopVersusTeamCommand( gentity_t *ent )
+{
+	const char	*arg = gi.argv( 1 );
+
+	if ( !g_coopVersus || !g_coopVersus->integer )
+	{
+		gi.SendServerCommand( ent->s.number, "print \"versus mode is off (g_coopVersus 0)\n\"" );
+		return;
+	}
+	if ( ent->s.number == 0 )
+	{	// the host is the campaign anchor - zero jedi means an instant mission-fail loop
+		gi.SendServerCommand( 0, "print \"the host stays on the jedi side\n\"" );
+		return;
+	}
+	if ( !arg[0] )
+	{
+		gi.SendServerCommand( ent->s.number, "print \"you are on side: %s  (coop_team jedi|enemy)\n\"",
+			ent->client->sess.sessionTeam == TEAM_ENEMY ? "^1enemy" : "^2jedi" );
+		return;
+	}
+	team_t	want = TEAM_FREE;	// stock side: jedi
+	if ( !Q_stricmp( arg, "enemy" ) || !Q_stricmp( arg, "enemies" ) || !Q_stricmp( arg, "e" ) )
+	{
+		want = TEAM_ENEMY;
+	}
+	else if ( Q_stricmp( arg, "jedi" ) && Q_stricmp( arg, "ally" ) && Q_stricmp( arg, "good" ) )
+	{
+		gi.SendServerCommand( ent->s.number, "print \"usage: coop_team jedi|enemy\n\"" );
+		return;
+	}
+	const qboolean	wasEnemy = (qboolean)( ent->client->sess.sessionTeam == TEAM_ENEMY );
+	const qboolean	isEnemy = (qboolean)( want == TEAM_ENEMY );
+	if ( wasEnemy == isEnemy )
+	{
+		return;	// already on that side
+	}
+	ent->client->sess.sessionTeam = want;
+	ClientUserinfoChanged( ent->s.number );	// CS_PLAYERS "t" follows the new side
+	if ( isEnemy )
+	{
+		G_CoopPrintTr( -1, "print", "^5%s ^7rejoint ^1l'ennemi^7!\n", "^5%s ^7joined the ^1enemies^7!\n", ent->client->pers.netname );
+	}
+	else
+	{
+		G_CoopPrintTr( -1, "print", "^5%s ^7rejoint les ^2jedi^7.\n", "^5%s ^7joined the ^2jedi^7.\n", ent->client->pers.netname );
+	}
+	if ( !G_CoopIsLobby() && ent->health > 0 && !G_CoopIsDowned( ent ) )
+	{	// downed players swap on their next natural spawn - no un-downing yourself
+		ClientSpawn( ent, eNO );
+		if ( isEnemy )
+		{
+			G_CoopVersusPlace( ent );	// go straight to the front instead of the map start
+		}
+	}
 }
 
 // the level goes away (or comes back): nobody is down
@@ -2269,6 +2441,10 @@ qboolean G_CoopAnyPlayerUp( void )
 {
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
+		if ( G_CoopIsVersusEnemy( &g_entities[i] ) )
+		{
+			continue;	// versus: the mission only fails while no Jedi is standing
+		}
 		if ( G_CoopIsUp( &g_entities[i] ) )
 		{
 			return qtrue;
@@ -2453,8 +2629,9 @@ death was turned into a downed state instead.
 */
 qboolean G_CoopTryDown( gentity_t *targ, gentity_t *attacker, int mod, int dflags )
 {
-	if ( !G_CoopIsPlayer( targ ) || !G_CoopDownedActive() || G_CoopIsDowned( targ ) || targ->s.number == coopBleedingOutNum )
-	{
+	if ( !G_CoopIsPlayer( targ ) || !G_CoopDownedActive() || G_CoopIsDowned( targ ) || targ->s.number == coopBleedingOutNum
+		|| G_CoopIsVersusEnemy( targ ) )
+	{	// versus hunters never go down - they die and respawn, L4D2 style
 		return qfalse;
 	}
 	// A pit is the one "real death" worth arguing with: the body lands out of
@@ -2807,6 +2984,7 @@ void G_CoopSharePickup( const gentity_t *item, gentity_t *toucher )
 	{
 		gentity_t	*mate = G_CoopPlayerSlot( i );
 		if ( !mate || mate == toucher || !G_CoopIsUp( mate )
+			|| ( G_CoopVersusOn() && G_CoopSideOf( mate ) != G_CoopSideOf( toucher ) )
 			|| DistanceSquared( mate->currentOrigin, toucher->currentOrigin ) > COOP_SHARE_RANGE * COOP_SHARE_RANGE )
 		{
 			continue;
@@ -2956,8 +3134,8 @@ void G_CoopDownedThink( gentity_t *ent, usercmd_t *ucmd )
 		return;
 	}
 
-	if ( ent->health <= 0 )
-	{
+	if ( ent->health <= 0 || G_CoopIsVersusEnemy( ent ) )
+	{	// versus hunters can't revive - keeping a Jedi breathing is the other side's job
 		return;
 	}
 

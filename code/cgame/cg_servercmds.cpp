@@ -281,6 +281,8 @@ static serverCommand_t	commands[] = {
 	{ "limb",				CG_CoopLimb_f },			// coop: a dismembered limb (host describes the cut)
 	{ "lt",					CG_LCARSText_f },
 	{ "mf",					CG_CoopMissionFailed_f },	// coop: host raised the mission-failed screen
+	{ "ping",				CG_CoopPing_f },			// coop: a teammate's waypoint marker
+	{ "cstat",				CG_CoopStats_f },			// coop: a scoreboard row
 	{ "print",				CG_Print_f },
 	{ "rag",				CG_CoopRag_f },				// coop: pose du ragdoll d'un corps (effecteurs)
 	{ "ragoff",				CG_CoopRagOff_f },			// coop: le corps s'est pose
