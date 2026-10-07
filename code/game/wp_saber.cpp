@@ -465,7 +465,12 @@ void WP_SaberAddG2SaberModels( gentity_t *ent, int specificSaberNum )
 		}
 		G_CreateG2AttachedWeaponModel( ent, ent->client->ps.saber[saberNum].model, handBolt, saberNum );
 
-		if ( ent->client->ps.saber[saberNum].skin != NULL )
+		// coop: attach can fail (bolt not ready, empty model). Never index ghoul2[-1]
+		// for the skin — that was corrupting the heap and crashing in ucrtbase when
+		// G_CoopSaberWatch retried a dead hilt every frame (solo host included).
+		if ( ent->weaponModel[saberNum] > 0
+			&& ent->weaponModel[saberNum] < ent->ghoul2.size()
+			&& ent->client->ps.saber[saberNum].skin != NULL )
 		{//if this saber has a customSkin, use it
 			// lets see if it's out there
 			int saberSkin = gi.RE_RegisterSkin( ent->client->ps.saber[saberNum].skin );

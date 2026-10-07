@@ -1357,6 +1357,9 @@ hand, the saber is gone") that two local instances did not reproduce.
 */
 static int	coopSaberSeen[MAX_CLIENTS];		// bit 0 in inventory, bit 1 has a definition, bit 2 hilt drawn in hand
 static int	coopSaberHandSince[MAX_CLIENTS];
+// coop: last hilt reattach attempt (level.time). Never hammer Ghoul2 every frame —
+// failed attach + skin write used to corrupt memory and crash solo hosts in ucrtbase.
+static int	coopHiltRetryAt[MAX_CLIENTS];
 
 // the ghoul2 slot is still a model, not a hole left by G2API_RemoveGhoul2Model
 static qboolean G_CoopHiltLive( const gentity_t *ent, int slot )
@@ -1380,6 +1383,7 @@ void G_CoopSaberWatch( void )
 		{
 			coopSaberSeen[i] = 0;
 			coopSaberHandSince[i] = 0;
+			coopHiltRetryAt[i] = 0;
 			continue;
 		}
 		playerState_t	*ps = &p->client->ps;
@@ -1388,14 +1392,27 @@ void G_CoopSaberWatch( void )
 		// coop: switching weapons removes the hilt and puts it back at the end of
 		// the holster. If that second step misses (no model string, bolt not ready),
 		// the saber stays gone while STAT_WEAPONS still has it. Put the hilt back.
+		// Solo hosts hit this path too — retry at most every 250ms, and only when
+		// the hand bolt exists so WP_SaberAddG2SaberModels can succeed.
 		if ( ( ps->stats[STAT_WEAPONS] & ( 1 << WP_SABER ) ) && ps->weapon == WP_SABER && !ps->saberInFlight
 			&& !G_CoopHiltLive( p, p->weaponModel[0] ) )
 		{
-			if ( ( !ps->saber[0].model || !ps->saber[0].model[0] ) && ps->saber[0].name && ps->saber[0].name[0] )
+			if ( p->handRBolt >= 0 && level.time >= coopHiltRetryAt[i] )
 			{
-				WP_SaberParseParms( ps->saber[0].name, &ps->saber[0], qfalse );
+				coopHiltRetryAt[i] = level.time + 250;
+				if ( ( !ps->saber[0].model || !ps->saber[0].model[0] ) && ps->saber[0].name && ps->saber[0].name[0] )
+				{
+					WP_SaberParseParms( ps->saber[0].name, &ps->saber[0], qfalse );
+				}
+				if ( ps->saber[0].model && ps->saber[0].model[0] )
+				{
+					WP_SaberAddG2SaberModels( p );
+				}
 			}
-			WP_SaberAddG2SaberModels( p );
+		}
+		else
+		{
+			coopHiltRetryAt[i] = 0;
 		}
 
 		if ( ps->stats[STAT_WEAPONS] & ( 1 << WP_SABER ) )

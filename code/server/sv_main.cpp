@@ -225,7 +225,7 @@ void SVC_Status( netadr_t from ) {
 	status[0] = 0;
 	statusLength = 0;
 
-	for (i=0 ; i < MAX_CLIENTS ; i++) {
+		for (i=0 ; i < MAX_CLIENTS ; i++) {
 		cl = &svs.clients[i];
 		if ( cl->state >= CS_CONNECTED ) {
 			if ( cl->gentity && cl->gentity->client ) {
@@ -233,7 +233,10 @@ void SVC_Status( netadr_t from ) {
 			} else {
 				score = 0;
 			}
-			Com_sprintf( player, sizeof( player ), "%i %i \"%s\"\n", score, cl->name );
+			// coop: format is score ping "name" (Q3/server-browser). SP client_t has
+			// no ping field — passing only (score, name) made %s read garbage and
+			// crash in ucrtbase whenever anything sent getstatus (LAN browser, etc.).
+			Com_sprintf( player, sizeof( player ), "%i %i \"%s\"\n", score, 0, cl->name );
 			playerLength = strlen(player);
 			if (statusLength + playerLength >= (int)sizeof(status) ) {
 				break;		// can't hold any more

@@ -61,6 +61,7 @@ typedef struct coopCharState_s {
 	unsigned bodyHash;		// hash of the spec's body fields (everything but the hand prop) the ghoul2 was built from
 	int		handSpec;		// spec index the hand prop was last read from
 	char	hand[MAX_QPATH+2];	// "L:path" / "R:path" attached (gent->cinematicModel), or ""
+	int		hiltRetryAt;	// coop: cg.time when we may retry a missing saber hilt again
 } coopCharState_t;
 
 // hash of the spec's body: the first 10 fields (the 11th is the hand prop, which never needs a rebuild)
@@ -1242,11 +1243,13 @@ void CG_CoopSyncCharacter( centity_t *cent )
 	// weapon / saber hilt models follow s.weapon. A switch that misses the hilt
 	// (model string not ready, or the slot already removed) used to stick: st->weapon
 	// was stored anyway, so the next frames never tried again and the saber was gone.
+	// coop: do not remove+reattach every frame on a dead hilt — that thrashed Ghoul2
+	// and, with the skin write on a failed attach, crashed in ucrtbase.
 	{
 		const qboolean hiltLive = (qboolean)( gent->weaponModel[0] >= 0 && gent->weaponModel[0] < gent->ghoul2.size()
 			&& gent->ghoul2[gent->weaponModel[0]].mModelindex >= 0 );
 		const qboolean wantSaber = (qboolean)( s->weapon == WP_SABER && !s->saberInFlight );
-		if ( s->weapon != st->weapon || ( wantSaber && !hiltLive ) )
+		if ( s->weapon != st->weapon )
 		{
 			G_RemoveWeaponModels( gent );
 			if ( s->weapon == WP_SABER )
@@ -1256,7 +1259,10 @@ void CG_CoopSyncCharacter( centity_t *cent )
 				{
 					WP_SaberParseParms( saber->name, saber, qfalse );
 				}
-				WP_SaberAddG2SaberModels( gent, -1 );
+				if ( saber->model && saber->model[0] && gent->handRBolt >= 0 )
+				{
+					WP_SaberAddG2SaberModels( gent, -1 );
+				}
 			}
 			else if ( s->weapon > WP_NONE && s->weapon < WP_NUM_WEAPONS && weaponData[s->weapon].weaponMdl[0] )
 			{
@@ -1264,6 +1270,20 @@ void CG_CoopSyncCharacter( centity_t *cent )
 			}
 			st->weapon = s->weapon;
 			st->inFlight = qfalse;
+			st->hiltRetryAt = 0;
+		}
+		else if ( wantSaber && !hiltLive && gent->handRBolt >= 0 && cg.time >= st->hiltRetryAt )
+		{
+			st->hiltRetryAt = cg.time + 250;
+			saberInfo_t *saber = &gent->client->ps.saber[0];
+			if ( ( !saber->model || !saber->model[0] ) && saber->name && saber->name[0] )
+			{
+				WP_SaberParseParms( saber->name, saber, qfalse );
+			}
+			if ( saber->model && saber->model[0] )
+			{
+				WP_SaberAddG2SaberModels( gent, -1 );
+			}
 		}
 	}
 
