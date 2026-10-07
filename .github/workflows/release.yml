@@ -1,0 +1,67 @@
+# JACoop: publish a ready-to-run update installer on every push.
+#
+# After the Windows build succeeds this job packs jacoop/pk3 into
+# zz_jacoop.pk3, compiles the single-file installer (the four payloads are
+# embedded as resources, see jacoop/installer/), and attaches it to the
+# rolling "latest" release. The public download URL never changes:
+#   https://github.com/<owner>/<repo>/releases/latest/download/JACoop-Setup.exe
+# Unlike build.yml this workflow also fires on jacoop/** changes, since the
+# pk3 assets and the installer source are part of what players download.
+name: release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [coop-gfx]
+    paths-ignore:
+      - "**.md"
+      - ".gitignore"
+      - "docs/**"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build + publish installer
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: bash
+        run: >
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+          -DBuildSPEngine=ON -DBuildSPGame=ON -DBuildSPRdVanilla=ON
+          -DBuildJK2SPEngine=OFF -DBuildJK2SPGame=OFF -DBuildJK2SPRdVanilla=OFF
+          -DBuildMPEngine=OFF -DBuildMPGame=OFF -DBuildMPCGame=OFF -DBuildMPUI=OFF
+          -DBuildMPRdVanilla=OFF -DBuildMPRend2=OFF -DBuildMPDed=OFF
+          -DBuildPortableVersion=OFF -DBuildTests=OFF
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Pack zz_jacoop.pk3
+        shell: pwsh
+        run: Compress-Archive -Path jacoop/pk3/* -DestinationPath build/zz_jacoop.pk3 -Force
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          jacoop/installer/build-installer.ps1 -Out dist/JACoop-Setup.exe
+
+      - name: Publish to rolling release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --cleanup-tag -y 2>/dev/null || true
+          gh release create latest dist/JACoop-Setup.exe \
+            --target "${{ github.sha }}" \
+            --title "Latest build" \
+            --notes "Automated build of ${{ github.sha }} — download JACoop-Setup.exe and run it. Old files are backed up automatically."
