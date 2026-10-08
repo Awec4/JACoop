@@ -382,8 +382,13 @@ static void StatusPostMapTime( const char *mapname, int seconds ) {
 	StatusBuildTeam( teamJson, sizeof( teamJson ) );
 
 	Com_sprintf( fields, sizeof( fields ),
-		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"ng\":%i,\"players\":[%s],\"kills\":[%s],\"team\":[%s]",
-		map, seconds, hostname, Cvar_VariableIntegerValue( "g_coopNGPlus" ), playersJson, killsJson, teamJson );
+		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"ng\":%i,\"cheats\":%i,\"skill\":%i,\"players\":[%s],\"kills\":[%s],\"team\":[%s]",
+		map, seconds, hostname, Cvar_VariableIntegerValue( "g_coopNGPlus" ),
+		Cvar_VariableIntegerValue( "helpUsObi" ), Cvar_VariableIntegerValue( "g_spskill" ),
+		playersJson, killsJson, teamJson );
+
+	// the next map announces this split in chat (game reads + clears the cvar)
+	Cvar_Set( "sv_coopLastSplit", va( "%s,%i", mapname, seconds ) );
 	StatusFire( "time", fields );
 }
 

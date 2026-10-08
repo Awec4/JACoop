@@ -789,6 +789,21 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 		{
 			gi.SendServerCommand( -1, va( "print \"^3NEW GAME+ %i — enemies are stronger.\n\"", g_coopNGPlus->integer ) );
 		}
+
+		// coop: last map's split time (engine stashed it when posting the run)
+		{
+			char split[64];
+			gi.cvar_variableStringBuffer( "sv_coopLastSplit", split, sizeof( split ) );
+			if ( split[0] )
+			{
+				char lastMap[32]; int secs = 0;
+				if ( sscanf( split, "%31[^,],%i", lastMap, &secs ) == 2 )
+				{
+					gi.SendServerCommand( -1, va( "print \"^5Split: ^7%s — %i:%02i\n\"", lastMap, secs / 60, secs % 60 ) );
+				}
+				gi.cvar_set( "sv_coopLastSplit", "" );
+			}
+		}
 	}
 	level.globalTime = globalTime;
 	Q_strncpyz( level.mapname, mapname, sizeof(level.mapname) );

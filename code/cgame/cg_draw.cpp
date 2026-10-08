@@ -3835,23 +3835,56 @@ static float CG_DrawFPS( float y ) {
 CG_DrawTimer
 =================
 */
+static int s_timerBase = 0; // coop: cg.time when this map's frames started
+
 static float CG_DrawTimer( float y ) {
 	char		*s;
 	int			w;
-	int			mins, seconds, tens;
+	int			mins, seconds, tens, msec;
 
-	seconds = cg.time / 1000;
+	if ( !s_timerBase || s_timerBase > cg.time )
+	{
+		s_timerBase = cg.time; // first frame of this level anchors the run clock
+	}
+	msec = cg.time - s_timerBase;
+	seconds = msec / 1000;
 	mins = seconds / 60;
 	seconds -= mins * 60;
 	tens = seconds / 10;
 	seconds -= tens * 10;
 
-	s = va( "%i:%i%i", mins, tens, seconds );
+	// cg_drawTimer 1 = m:ss.t (precision), 2 = plain m:ss
+	if ( cg_drawTimer.integer == 1 )
+	{
+		s = va( "%i:%i%i.%i", mins, tens, seconds, ( msec % 1000 ) / 100 );
+	}
+	else
+	{
+		s = va( "%i:%i%i", mins, tens, seconds );
+	}
 
 	w = cgi_R_Font_StrLenPixels(s, cgs.media.qhFontMedium, 1.0f);
 	cgi_R_Font_DrawString(635 - w, y+2, s, colorTable[CT_LTGOLD1], cgs.media.qhFontMedium, -1, 1.0f);
 
 	return y + BIGCHAR_HEIGHT + 10;
+}
+
+/*
+=================
+CG_DrawSpeedometer — coop: u/s velocity readout for strafe runners
+=================
+*/
+static float CG_DrawSpeedometer( float y ) {
+	if ( !cg.snap )
+	{
+		return y;
+	}
+	const vec3_t &v = cg.snap->ps.velocity;
+	int speed = (int)sqrtf( v[0]*v[0] + v[1]*v[1] + v[2]*v[2] );
+	char *s = va( "%i u/s", speed );
+	int w = cgi_R_Font_StrLenPixels( s, cgs.media.qhFontMedium, 1.0f );
+	cgi_R_Font_DrawString( 320 - w/2, 452, s, colorTable[CT_CYAN], cgs.media.qhFontMedium, -1, 1.0f );
+	return y;
 }
 
 
@@ -4507,6 +4540,12 @@ static void CG_Draw2D( void )
 	}
 	if (cg_drawTimer.integer) {
 		y=CG_DrawTimer(y);
+	}
+	{
+		extern vmCvar_t cg_speedometer;
+		if ( cg_speedometer.integer ) {
+			y=CG_DrawSpeedometer(y);
+		}
 	}
 
 	// don't draw center string if scoreboard is up
