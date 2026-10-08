@@ -2872,12 +2872,70 @@ static void G_CoopSendStats( int toSlot )
 
 void G_CoopBroadcastStats( void )
 {
+	// the site reads the same table through sv_coopTeam at map end
+	char	buf[512];
+	int		off = 0;
+	buf[0] = 0;
+	for ( int s = 0; s < MAX_CLIENTS; s++ )
+	{
+		if ( G_CoopPlayerSlot( s ) )
+		{
+			off += snprintf( buf + off, sizeof( buf ) - off, "%s%i,%i,%i,%i",
+				off ? ";" : "", s, coopStatDowns[s], coopStatRevives[s], coopStatDeaths[s] );
+		}
+	}
+	gi.cvar_set( "sv_coopTeam", buf );
+
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
 		if ( G_CoopPlayerSlot( i ) )
 		{
 			G_CoopSendStats( i );
 		}
+	}
+}
+
+/*
+================
+G_CoopPrintScorecard
+
+End-of-map chat recap, like a modern co-op post-match screen: MVP (most
+kills), top medic (most revives) and the biggest casualty — each only when
+it beats zero.
+================
+*/
+void G_CoopPrintScorecard( void )
+{
+	int	bestK = 0, bestR = 0, bestD = 0;
+	int	iK = -1, iR = -1, iD = -1;
+
+	for ( int s = 0; s < MAX_CLIENTS; s++ )
+	{
+		gentity_t	*p = G_CoopPlayerSlot( s );
+		if ( !p || !p->client )
+		{
+			continue;
+		}
+		const int kills = p->client->ps.persistant[PERS_ENEMIES_KILLED];
+		if ( kills > bestK ) { bestK = kills; iK = s; }
+		if ( coopStatRevives[s] > bestR ) { bestR = coopStatRevives[s]; iR = s; }
+		if ( coopStatDeaths[s] > bestD ) { bestD = coopStatDeaths[s]; iD = s; }
+	}
+	G_CoopPrintTr( -1, "print", "^5--- debriefing ---\n", "^5--- mission debrief ---\n" );
+	if ( iK >= 0 )
+	{
+		gentity_t *p = G_CoopPlayerSlot( iK );
+		G_CoopPrintTr( -1, "print", "^3* MVP : ^7%s (%i frags)\n", "^3* MVP: ^7%s (%i kills)\n", p->client->pers.netname, bestK );
+	}
+	if ( iR >= 0 )
+	{
+		gentity_t *p = G_CoopPlayerSlot( iR );
+		G_CoopPrintTr( -1, "print", "^2+ Sauveteur : ^7%s (%i relevages)\n", "^2+ Medic: ^7%s (%i revives)\n", p->client->pers.netname, bestR );
+	}
+	if ( iD >= 0 )
+	{
+		gentity_t *p = G_CoopPlayerSlot( iD );
+		G_CoopPrintTr( -1, "print", "^1x Plus de morts : ^7%s (%i)\n", "^1x Most deaths: ^7%s (%i)\n", p->client->pers.netname, bestD );
 	}
 }
 

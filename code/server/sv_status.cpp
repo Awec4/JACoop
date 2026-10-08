@@ -70,6 +70,10 @@ void SV_StatusInit( void ) {
 	// game -> engine kill tally: "cn,mod,count;cn,mod,count" rewritten on
 	// every NPC kill; StatusPostMapTime ships it with the completed map.
 	Cvar_Get( "sv_coopKills", "", CVAR_TEMP );
+
+	// Per-slot downed/revive/death tallies the game keeps live
+	// ("cn,d,r,dd;..."). StatusPostMapTime ships it with the completed map.
+	Cvar_Get( "sv_coopTeam", "", CVAR_TEMP );
 	// game -> engine trail channel: "cn|x,y,z,x,y,z;cn|x,y,z" flushed by
 	// the game as opt-in players move; StatusCheckTrail accumulates it.
 	Cvar_Get( "sv_coopTrail", "", CVAR_TEMP );
@@ -324,8 +328,48 @@ static void StatusBuildKills( char *dst, size_t dstSize ) {
 	(void)ctx;
 }
 
+/*
+================
+StatusBuildTeam
+
+Same cvar bridge as the kills: "cn,downs,revives,deaths;..." becomes
+"team":[{"n":"name","d":x,"r":y,"dd":z}]" with the account fields
+attached the same way.
+================
+*/
+static void StatusBuildTeam( char *dst, size_t dstSize ) {
+	char	tally[1100], *tok;
+	int		off = 0;
+
+	dst[0] = 0;
+	if ( !svs.clients ) {
+		return;
+	}
+	Q_strncpyz( tally, Cvar_VariableString( "sv_coopTeam" ), sizeof( tally ) );
+	for ( tok = strtok( tally, ";" ); tok && off < (int)dstSize - 256;
+		tok = strtok( NULL, ";" ) ) {
+		int	cn, downs, revives, deaths;
+		char	escName[MAX_NAME_LENGTH * 2];
+		client_t *cl;
+
+		if ( sscanf( tok, "%d,%d,%d,%d", &cn, &downs, &revives, &deaths ) != 4 ||
+			cn < 0 || cn >= MAX_CLIENTS ) {
+			continue;
+		}
+		cl = &svs.clients[cn];
+		if ( !cl->name[0] ) {
+			continue;
+		}
+		StatusJsonEscape( escName, sizeof( escName ), cl->name );
+		off += Com_sprintf( dst + off, dstSize - off,
+			"%s{\"n\":\"%s\",\"d\":%i,\"r\":%i,\"dd\":%i%s}",
+			off ? "," : "", escName, downs, revives, deaths, StatusAccountFields( cl ) );
+	}
+	dst[dstSize - 1] = 0;
+}
+
 static void StatusPostMapTime( const char *mapname, int seconds ) {
-	char	hostname[128], map[128], playersJson[1600], killsJson[2400], fields[4096];
+	char	hostname[128], map[128], playersJson[1600], killsJson[2400], teamJson[1400], fields[4096];
 
 	if ( seconds < 10 ) {
 		return;		// map hops shorter than this are console/dev hops, not runs
@@ -335,10 +379,11 @@ static void StatusPostMapTime( const char *mapname, int seconds ) {
 	StatusJsonEscape( map, sizeof( map ), mapname );
 	StatusBuildRoster( playersJson, sizeof( playersJson ), qtrue );
 	StatusBuildKills( killsJson, sizeof( killsJson ) );
+	StatusBuildTeam( teamJson, sizeof( teamJson ) );
 
 	Com_sprintf( fields, sizeof( fields ),
-		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"ng\":%i,\"players\":[%s],\"kills\":[%s]",
-		map, seconds, hostname, Cvar_VariableIntegerValue( "g_coopNGPlus" ), playersJson, killsJson );
+		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"ng\":%i,\"players\":[%s],\"kills\":[%s],\"team\":[%s]",
+		map, seconds, hostname, Cvar_VariableIntegerValue( "g_coopNGPlus" ), playersJson, killsJson, teamJson );
 	StatusFire( "time", fields );
 }
 

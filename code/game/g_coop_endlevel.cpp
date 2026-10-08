@@ -424,6 +424,7 @@ static void G_CoopEndLaunch( void )
 	gi.SetConfigstring( CS_COOP_ENDLEVEL, "" );
 	gi.SendServerCommand( -1, "coopmenu closeall" );
 	gi.Printf( "coop: end of mission, everybody is ready -> %s\n", coopEndMap );
+	G_CoopPrintScorecard();	// coop: post-match recap before the hop
 	gi.cvar_set( "tier_mapname", va( "maptransition %s", coopEndMap ) );
 	gi.SendConsoleCommand( va( "maptransition %s\n", coopEndMap ) );
 }
