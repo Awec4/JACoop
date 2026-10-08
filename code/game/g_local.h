@@ -848,5 +848,7 @@ float NPC_GetHFOVPercentage( vec3_t spot, vec3_t from, vec3_t facing, float hFOV
 float NPC_GetVFOVPercentage( vec3_t spot, vec3_t from, vec3_t facing, float vFOV );
 
 void	G_CoopReportDeath( const char *victim, const char *killer, int clientNum );
+void	G_CoopReportKill( int clientNum, int meansOfDeath );
+void	G_CoopResetKills( void );
 
 #endif//#ifndef __G_LOCAL_H__

@@ -67,6 +67,9 @@ void SV_StatusInit( void ) {
 	// game -> engine death report channel: the game writes
 	// "seq|victim|killer" on each player death; StatusCheckDeath polls it.
 	Cvar_Get( "sv_coopDeath", "", CVAR_TEMP );
+	// game -> engine kill tally: "cn,mod,count;cn,mod,count" rewritten on
+	// every NPC kill; StatusPostMapTime ships it with the completed map.
+	Cvar_Get( "sv_coopKills", "", CVAR_TEMP );
 }
 
 /*
@@ -275,8 +278,51 @@ the server leaves statusLastMap for a different map; same-map reloads
 (death restarts) never reach here. Sent off-thread like the status push.
 ================
 */
+/*
+================
+StatusBuildKills
+
+Turns the game's sv_coopKills tally ("cn,mod,count;cn,mod,count") into
+"kills":[{"n":"name","a":"acct","k":"key","m":mod,"c":count}]". The
+site resolves a+k to the verified account, m to a weapon name. Clients
+already gone by map end keep their slot name if it survives — no name,
+no row.
+================
+*/
+static void StatusBuildKills( char *dst, size_t dstSize ) {
+	char	tally[1100], *ctx = NULL, *tok;
+	int		off = 0;
+
+	dst[0] = 0;
+	if ( !svs.clients ) {
+		return;
+	}
+	Q_strncpyz( tally, Cvar_VariableString( "sv_coopKills" ), sizeof( tally ) );
+	for ( tok = strtok( tally, ";" ); tok && off < (int)dstSize - 256;
+		tok = strtok( NULL, ";" ) ) {
+		int	cn, mod, count;
+		char	escName[MAX_NAME_LENGTH * 2];
+		client_t *cl;
+
+		if ( sscanf( tok, "%d,%d,%d", &cn, &mod, &count ) != 3 ||
+			cn < 0 || cn >= MAX_CLIENTS || count <= 0 ) {
+			continue;
+		}
+		cl = &svs.clients[cn];
+		if ( !cl->name[0] ) {
+			continue;
+		}
+		StatusJsonEscape( escName, sizeof( escName ), cl->name );
+		off += Com_sprintf( dst + off, dstSize - off,
+			"%s{\"n\":\"%s\",\"m\":%i,\"c\":%i%s}",
+			off ? "," : "", escName, mod, count, StatusAccountFields( cl ) );
+	}
+	dst[dstSize - 1] = 0;
+	(void)ctx;
+}
+
 static void StatusPostMapTime( const char *mapname, int seconds ) {
-	char	hostname[128], map[128], playersJson[1600], fields[2048];
+	char	hostname[128], map[128], playersJson[1600], killsJson[2400], fields[4096];
 
 	if ( seconds < 10 ) {
 		return;		// map hops shorter than this are console/dev hops, not runs
@@ -285,10 +331,11 @@ static void StatusPostMapTime( const char *mapname, int seconds ) {
 	StatusJsonEscape( hostname, sizeof( hostname ), sv_hostname ? sv_hostname->string : "" );
 	StatusJsonEscape( map, sizeof( map ), mapname );
 	StatusBuildRoster( playersJson, sizeof( playersJson ), qtrue );
+	StatusBuildKills( killsJson, sizeof( killsJson ) );
 
 	Com_sprintf( fields, sizeof( fields ),
-		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"players\":[%s]",
-		map, seconds, hostname, playersJson );
+		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"players\":[%s],\"kills\":[%s]",
+		map, seconds, hostname, playersJson, killsJson );
 	StatusFire( "time", fields );
 }
 

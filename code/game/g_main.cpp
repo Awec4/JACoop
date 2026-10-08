@@ -779,6 +779,7 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 	memset( &level, 0, sizeof( level ) );
 	level.time = levelTime;
 	G_CoopLobbyInit();	// coop: lobby map? fresh campaign?
+	G_CoopResetKills();	// coop: fresh map, fresh kill tally
 	G_CoopEndLevelInit();	// coop: nothing of the previous mission's end-of-level flow survives
 	level.globalTime = globalTime;
 	Q_strncpyz( level.mapname, mapname, sizeof(level.mapname) );
@@ -2471,4 +2472,42 @@ void G_CoopReportDeath( const char *victim, const char *killer, int clientNum ) 
 	}
 	gi.cvar_set( "sv_coopDeath", va( "%i|%s|%s|%s|%s", ++seq,
 		victim ? victim : "?", killer ? killer : "world", acct, key ) );
+}
+
+/*
+================
+G_CoopReportKill / G_CoopResetKills
+
+Per-map NPC kill tally: coopKillTally[client][MOD] counts this map's
+kills per weapon. Each kill rewrites the sv_coopKills cvar as
+"cn,mod,count;cn,mod,count" triples — the engine reads it when it posts
+the completed-map time and fills in names/accounts from the client list.
+================
+*/
+static int coopKillTally[MAX_CLIENTS][NUM_MODS];
+
+void G_CoopResetKills( void ) {
+	memset( coopKillTally, 0, sizeof( coopKillTally ) );
+	gi.cvar_set( "sv_coopKills", "" );
+}
+
+void G_CoopReportKill( int clientNum, int meansOfDeath ) {
+	int		i, m, off = 0;
+	char	buf[1024];
+
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS ||
+		meansOfDeath <= 0 || meansOfDeath >= NUM_MODS ) {
+		return;
+	}
+	coopKillTally[clientNum][meansOfDeath]++;
+	buf[0] = 0;
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		for ( m = 1; m < NUM_MODS; m++ ) {
+			if ( coopKillTally[i][m] > 0 && off < (int)sizeof( buf ) - 24 ) {
+				off += Com_sprintf( buf + off, sizeof( buf ) - off,
+					"%s%d,%d,%d", off ? ";" : "", i, m, coopKillTally[i][m] );
+			}
+		}
+	}
+	gi.cvar_set( "sv_coopKills", buf );
 }

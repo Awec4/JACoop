@@ -6858,6 +6858,11 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 			{	// coop: down, not dead
 				return;
 			}
+			if ( !alreadyDead && attacker && attacker != targ && G_CoopIsPlayer( attacker )
+				&& targ->NPC_type && targ->NPC_type[0] )
+			{	// coop: player killed an NPC — tally it for the site's kill boards
+				G_CoopReportKill( attacker->s.number, mod );
+			}
 			GEntity_DieFunc( targ, inflictor, attacker, take, mod, dflags, hitLoc );
 		}
 		else
