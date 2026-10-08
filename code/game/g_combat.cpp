@@ -3687,6 +3687,21 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		return;
 	}
 
+	// coop: feed the site's death log — every call past the PM_DEAD branch is
+	// a fresh player death. Killer = player name, else NPC_type (reborn,
+	// stormtrooper...), else the entity classname, else "world".
+	if ( self->client ) {
+		const char *killer = "world";
+		if ( attacker && attacker->client && attacker != self ) {
+			killer = attacker->client->pers.netname;
+		} else if ( attacker && attacker->NPC_type && attacker->NPC_type[0] ) {
+			killer = attacker->NPC_type;
+		} else if ( attacker && attacker->classname ) {
+			killer = attacker->classname;
+		}
+		G_CoopReportDeath( self->client->pers.netname, killer );
+	}
+
 	// If the entity is in a vehicle.
 	if ( self->client && self->client->NPC_class != CLASS_VEHICLE && self->s.m_iVehicleNum != 0 )
 	{

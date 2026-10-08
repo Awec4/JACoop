@@ -2451,3 +2451,17 @@ IGhoul2InfoArray &TheGameGhoul2InfoArray()
 {
 	return gi.TheGhoul2InfoArray();
 }
+
+/*
+================
+G_CoopReportDeath
+
+Writes "seq|victim|killer" into the sv_coopDeath cvar — the engine's
+status code polls it and posts each player death to the site feed.
+================
+*/
+void G_CoopReportDeath( const char *victim, const char *killer ) {
+	static int seq = 0;
+	gi.cvar_set( "sv_coopDeath", va( "%i|%s|%s", ++seq,
+		victim ? victim : "?", killer ? killer : "world" ) );
+}

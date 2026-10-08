@@ -64,6 +64,9 @@ void SV_StatusInit( void ) {
 	sv_statusToken    = Cvar_Get( "sv_statusToken", "93e58253f46639614166c16147311d71dc209bbfa1c2100e", CVAR_ARCHIVE );
 	sv_statusInterval = Cvar_Get( "sv_statusInterval", "20", CVAR_ARCHIVE );
 	sv_statusJoin     = Cvar_Get( "sv_statusJoin", "76.176.218.251:29070", CVAR_ARCHIVE );
+	// game -> engine death report channel: the game writes
+	// "seq|victim|killer" on each player death; StatusCheckDeath polls it.
+	Cvar_Get( "sv_coopDeath", "", CVAR_TEMP );
 }
 
 /*
@@ -156,13 +159,39 @@ Derives the map-time endpoint next to sv_statusURL:
 A custom URL that ends in neither is used as-is.
 ================
 */
-static void StatusTimeURL( char *dst, size_t dstSize, const char *src ) {
+static void StatusEndpointURL( char *dst, size_t dstSize, const char *src, const char *endpoint ) {
 	const char *slash = strrchr( src, '/' );
 	if ( slash && ( !Q_stricmp( slash, "/ping" ) || !Q_stricmp( slash, "/status" ) ) ) {
-		Com_sprintf( dst, dstSize, "%.*s/time", (int)( slash - src ), src );
+		Com_sprintf( dst, dstSize, "%.*s/%s", (int)( slash - src ), src, endpoint );
 	} else {
 		Q_strncpyz( dst, src, dstSize );
 	}
+}
+
+/*
+================
+StatusFire
+
+Builds and sends one JSON post to a coop endpoint ("time", "attempt",
+"death"). `fields` is everything after the token key, e.g.
+\"map\":\"yavin1\",\"seconds\":743. Off-thread like the status push.
+================
+*/
+static void StatusFire( const char *endpoint, const char *fields ) {
+	char	token[256], url[512];
+	statusPost_t	*post;
+
+	StatusJsonEscape( token, sizeof( token ), sv_statusToken->string );
+	StatusEndpointURL( url, sizeof( url ), sv_statusURL->string, endpoint );
+
+	post = (statusPost_t *)malloc( sizeof( *post ) );
+	if ( !post ) {
+		return;
+	}
+	Q_strncpyz( post->url, url, sizeof( post->url ) );
+	StatusHeaderToken( post->token, sizeof( post->token ), sv_statusToken->string );
+	Com_sprintf( post->body, sizeof( post->body ), "{\"token\":\"%s\",%s}", token, fields );
+	StatusSendPost( post );
 }
 
 /*
@@ -216,30 +245,74 @@ the server leaves statusLastMap for a different map; same-map reloads
 ================
 */
 static void StatusPostMapTime( const char *mapname, int seconds ) {
-	char	token[256], hostname[128], map[128], playersJson[1600], turl[512];
-	statusPost_t	*post;
+	char	hostname[128], map[128], playersJson[1600], fields[2048];
 
 	if ( seconds < 10 ) {
 		return;		// map hops shorter than this are console/dev hops, not runs
 	}
 
-	StatusJsonEscape( token, sizeof( token ), sv_statusToken->string );
 	StatusJsonEscape( hostname, sizeof( hostname ), sv_hostname ? sv_hostname->string : "" );
 	StatusJsonEscape( map, sizeof( map ), mapname );
 	StatusBuildRoster( playersJson, sizeof( playersJson ) );
-	StatusTimeURL( turl, sizeof( turl ), sv_statusURL->string );
 
-	post = (statusPost_t *)malloc( sizeof( *post ) );
-	if ( !post ) {
+	Com_sprintf( fields, sizeof( fields ),
+		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"players\":[%s]",
+		map, seconds, hostname, playersJson );
+	StatusFire( "time", fields );
+}
+
+/*
+================
+StatusPostAttempt
+
+Counts a map start as a run attempt — same-map restarts included, since a
+death reload IS a fresh try. Feeds the site's attempts-vs-clears stat.
+================
+*/
+static void StatusPostAttempt( const char *mapname ) {
+	char	map[128], fields[256];
+
+	StatusJsonEscape( map, sizeof( map ), mapname );
+	Com_sprintf( fields, sizeof( fields ), "\"map\":\"%s\"", map );
+	StatusFire( "attempt", fields );
+}
+
+/*
+================
+StatusCheckDeath
+
+The game reports each player death through the sv_coopDeath cvar
+("seq|victim|killer" — pipes can't appear in names). A change means a
+fresh death: report it. Called every frame before the interval gate so
+deaths post promptly instead of waiting for the next status push.
+================
+*/
+static void StatusCheckDeath( void ) {
+	static char	lastDeath[192];
+	char		death[192], victim[128], killer[128], map[128], fields[512];
+	char		*v, *k;
+	const char	*d = Cvar_VariableString( "sv_coopDeath" );
+
+	if ( !d[0] || !strcmp( d, lastDeath ) ) {
 		return;
 	}
-	Q_strncpyz( post->url, turl, sizeof( post->url ) );
-	StatusHeaderToken( post->token, sizeof( post->token ), sv_statusToken->string );
-	Com_sprintf( post->body, sizeof( post->body ),
-		"{\"token\":\"%s\",\"map\":\"%s\",\"seconds\":%i,"
-		"\"hostname\":\"%s\",\"players\":[%s]}",
-		token, map, seconds, hostname, playersJson );
-	StatusSendPost( post );
+	Q_strncpyz( lastDeath, d, sizeof( lastDeath ) );
+
+	Q_strncpyz( death, d, sizeof( death ) );
+	v = strchr( death, '|' );
+	if ( !v ) return;
+	*v++ = 0;
+	k = strchr( v, '|' );
+	if ( !k ) return;
+	*k++ = 0;
+	// death now holds the seq (unused), v = victim, k = killer
+
+	StatusJsonEscape( victim, sizeof( victim ), v );
+	StatusJsonEscape( killer, sizeof( killer ), k );
+	StatusJsonEscape( map, sizeof( map ), sv_mapname ? sv_mapname->string : "" );
+	Com_sprintf( fields, sizeof( fields ),
+		"\"victim\":\"%s\",\"killer\":\"%s\",\"map\":\"%s\"", victim, killer, map );
+	StatusFire( "death", fields );
 }
 
 /*
@@ -260,6 +333,7 @@ void SV_StatusMapStarted( const char *mapname ) {
 	}
 	Q_strncpyz( statusLastMap, mapname, sizeof( statusLastMap ) );
 	statusMapStart = Sys_Milliseconds();
+	StatusPostAttempt( mapname );
 }
 
 #if defined(_WIN32)
@@ -418,6 +492,9 @@ void SV_StatusFrame( void ) {
 	if ( !sv_statusURL || !sv_statusURL->string[0] || !sv_statusToken || !sv_statusToken->string[0] ) {
 		return;
 	}
+
+	StatusCheckDeath();
+
 	interval = sv_statusInterval->integer;
 	if ( interval < 5 )   interval = 5;
 	if ( interval > 300 ) interval = 300;
