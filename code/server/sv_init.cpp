@@ -380,6 +380,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 
 	// set serverinfo visible name
 	Cvar_Set( "mapname", server );
+	SV_StatusMapStarted( server );	// coop: map timer for the site's leaderboards
 
 	Cvar_Set( "sv_mapChecksum", va("%i",checksum) );
 

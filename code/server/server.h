@@ -304,6 +304,7 @@ void SV_CoopTransferInit( void );
 // sv_status.cpp -- coop: publish this host's status to a web API
 void SV_StatusInit( void );
 void SV_StatusFrame( void );
+void SV_StatusMapStarted( const char *mapname );
 void SV_CoopTransferFrame( void );
 void SV_CoopTransferShutdown( void );
 void SV_CoopTransferClose( client_t *cl );

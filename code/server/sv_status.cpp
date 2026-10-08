@@ -49,9 +49,15 @@ static cvar_t	*sv_statusToken;
 static cvar_t	*sv_statusInterval;
 static cvar_t	*sv_statusJoin;
 
+static char		statusLastMap[128];	// map the server ran before the current one
+static int		statusMapStart;		// Sys_Milliseconds() when the current map started
+
 #if defined(_WIN32)
 static volatile long	statusBusy;	// nonzero while a worker push is in flight
 #endif
+
+typedef struct statusPost_s statusPost_t;
+static void StatusSendPost( statusPost_t *post );
 
 void SV_StatusInit( void ) {
 	sv_statusURL      = Cvar_Get( "sv_statusURL", "https://advjksite.koevetmc.workers.dev/api/coop/ping", CVAR_ARCHIVE );
@@ -101,11 +107,63 @@ static void StatusHeaderToken( char *dst, size_t dstSize, const char *src ) {
 	dst[n] = 0;
 }
 
-typedef struct {
+typedef struct statusPost_s {
 	char	url[512];
 	char	token[256];
 	char	body[4096];
 } statusPost_t;
+
+/*
+================
+StatusBuildRoster
+
+Fills dst with [{"name":...,"score":N,"ping":N}, ...] for the site's
+player list — same fields the getstatus reply in sv_main.cpp reports.
+================
+*/
+static void StatusBuildRoster( char *dst, size_t dstSize ) {
+	int		i, off = 0;
+
+	dst[0] = 0;
+	if ( !svs.clients ) {
+		return;
+	}
+	for ( i = 0; i < MAX_CLIENTS && off < (int)dstSize - 96; i++ ) {
+		client_t	*cl = &svs.clients[i];
+		char		escName[MAX_NAME_LENGTH * 2];
+		int			score = 0;
+
+		if ( cl->state < CS_CONNECTED ) {
+			continue;
+		}
+		if ( cl->gentity && cl->gentity->client ) {
+			score = cl->gentity->client->persistant[PERS_SCORE];
+		}
+		StatusJsonEscape( escName, sizeof( escName ), cl->name );
+		off += Com_sprintf( dst + off, dstSize - off,
+			"%s{\"name\":\"%s\",\"score\":%i,\"ping\":%i}",
+			off ? "," : "", escName, score, cl->ping );
+	}
+	dst[dstSize - 1] = 0;
+}
+
+/*
+================
+StatusTimeURL
+
+Derives the map-time endpoint next to sv_statusURL:
+.../api/coop/ping or .../api/coop/status -> .../api/coop/time.
+A custom URL that ends in neither is used as-is.
+================
+*/
+static void StatusTimeURL( char *dst, size_t dstSize, const char *src ) {
+	const char *slash = strrchr( src, '/' );
+	if ( slash && ( !Q_stricmp( slash, "/ping" ) || !Q_stricmp( slash, "/status" ) ) ) {
+		Com_sprintf( dst, dstSize, "%.*s/time", (int)( slash - src ), src );
+	} else {
+		Q_strncpyz( dst, src, dstSize );
+	}
+}
 
 /*
 ================
@@ -118,7 +176,7 @@ self-contained request the worker can send without touching engine state.
 static statusPost_t *StatusBuildPost( void ) {
 	char	token[256], hostname[128], map[128], join[256];
 	char	playersJson[1600];
-	int		i, off = 0, maxcl, lobby;
+	int		maxcl, lobby, elapsed = 0;
 	statusPost_t	*post;
 
 	StatusJsonEscape( token, sizeof( token ), sv_statusToken->string );
@@ -126,28 +184,10 @@ static statusPost_t *StatusBuildPost( void ) {
 	StatusJsonEscape( map, sizeof( map ), sv_mapname ? sv_mapname->string : "" );
 	StatusJsonEscape( join, sizeof( join ), sv_statusJoin->string );
 
-	// Roster for the site's player list: name/score/ping per connected client,
-	// same fields the getstatus reply in sv_main.cpp reports.
-	playersJson[0] = 0;
-	if ( svs.clients ) {
-		for ( i = 0; i < MAX_CLIENTS && off < (int)sizeof( playersJson ) - 96; i++ ) {
-			client_t	*cl = &svs.clients[i];
-			char		escName[MAX_NAME_LENGTH * 2];
-			int			score = 0;
-
-			if ( cl->state < CS_CONNECTED ) {
-				continue;
-			}
-			if ( cl->gentity && cl->gentity->client ) {
-				score = cl->gentity->client->persistant[PERS_SCORE];
-			}
-			StatusJsonEscape( escName, sizeof( escName ), cl->name );
-			off += Com_sprintf( playersJson + off, sizeof( playersJson ) - off,
-				"%s{\"name\":\"%s\",\"score\":%i,\"ping\":%i}",
-				off ? "," : "", escName, score, cl->ping );
-		}
+	StatusBuildRoster( playersJson, sizeof( playersJson ) );
+	if ( statusMapStart > 0 ) {
+		elapsed = ( Sys_Milliseconds() - statusMapStart ) / 1000;
 	}
-	playersJson[sizeof( playersJson ) - 1] = 0;
 	maxcl = sv_maxclients ? sv_maxclients->integer : MAX_CLIENTS;
 	lobby = Cvar_VariableIntegerValue( "g_coopLobby" ) ? 1 : 0;
 
@@ -159,10 +199,66 @@ static statusPost_t *StatusBuildPost( void ) {
 	StatusHeaderToken( post->token, sizeof( post->token ), sv_statusToken->string );
 	Com_sprintf( post->body, sizeof( post->body ),
 		"{\"token\":\"%s\",\"hostname\":\"%s\",\"map\":\"%s\","
-		"\"players\":[%s],\"maxplayers\":%i,\"lobby\":%i,"
+		"\"players\":[%s],\"maxplayers\":%i,\"lobby\":%i,\"elapsed\":%i,"
 		"\"join\":\"%s\",\"protocol\":%i}",
-		token, hostname, map, playersJson, maxcl, lobby, join, PROTOCOL_VERSION );
+		token, hostname, map, playersJson, maxcl, lobby, elapsed, join, PROTOCOL_VERSION );
 	return post;
+}
+
+/*
+================
+StatusPostMapTime
+
+Reports a completed map's run time to the .../time endpoint. Called when
+the server leaves statusLastMap for a different map; same-map reloads
+(death restarts) never reach here. Sent off-thread like the status push.
+================
+*/
+static void StatusPostMapTime( const char *mapname, int seconds ) {
+	char	token[256], hostname[128], map[128], playersJson[1600], turl[512];
+	statusPost_t	*post;
+
+	if ( seconds < 10 ) {
+		return;		// map hops shorter than this are console/dev hops, not runs
+	}
+
+	StatusJsonEscape( token, sizeof( token ), sv_statusToken->string );
+	StatusJsonEscape( hostname, sizeof( hostname ), sv_hostname ? sv_hostname->string : "" );
+	StatusJsonEscape( map, sizeof( map ), mapname );
+	StatusBuildRoster( playersJson, sizeof( playersJson ) );
+	StatusTimeURL( turl, sizeof( turl ), sv_statusURL->string );
+
+	post = (statusPost_t *)malloc( sizeof( *post ) );
+	if ( !post ) {
+		return;
+	}
+	Q_strncpyz( post->url, turl, sizeof( post->url ) );
+	StatusHeaderToken( post->token, sizeof( post->token ), sv_statusToken->string );
+	Com_sprintf( post->body, sizeof( post->body ),
+		"{\"token\":\"%s\",\"map\":\"%s\",\"seconds\":%i,"
+		"\"hostname\":\"%s\",\"players\":[%s]}",
+		token, map, seconds, hostname, playersJson );
+	StatusSendPost( post );
+}
+
+/*
+================
+SV_StatusMapStarted
+
+Called from SV_SpawnServer once the new map name is known. A change to a
+different map reports the previous map's elapsed; a same-map restart just
+restarts the clock.
+================
+*/
+void SV_StatusMapStarted( const char *mapname ) {
+	if ( !com_sv_running || !com_sv_running->integer || !Cvar_VariableIntegerValue( "net_enabled" ) ) {
+		return;		// solo hosts never report
+	}
+	if ( statusMapStart > 0 && statusLastMap[0] && Q_stricmp( statusLastMap, mapname ) != 0 ) {
+		StatusPostMapTime( statusLastMap, ( Sys_Milliseconds() - statusMapStart ) / 1000 );
+	}
+	Q_strncpyz( statusLastMap, mapname, sizeof( statusLastMap ) );
+	statusMapStart = Sys_Milliseconds();
 }
 
 #if defined(_WIN32)
@@ -249,43 +345,17 @@ done:
 
 /*
 ================
-SV_StatusFrame
+StatusSendPost
 
-Called from SV_Frame on every engine frame, so it keeps ticking while the
-host is in the lobby, watching a cutscene or paused by cl_paused.
+Fires a prepared post off the game thread — WinHTTP worker on Windows,
+detached curl child elsewhere. Frees post in every case; drops the
+request if a push is still in flight (Windows).
 ================
 */
-void SV_StatusFrame( void ) {
-	static int		lastPush = 0;
-	int				now, interval;
-	statusPost_t	*post;
-
-	if ( !com_sv_running || !com_sv_running->integer ) {
-		return;
-	}
-	if ( !Cvar_VariableIntegerValue( "net_enabled" ) ) {
-		return;		// solo run: nothing to advertise, nobody could join anyway
-	}
-	if ( !sv_statusURL || !sv_statusURL->string[0] || !sv_statusToken || !sv_statusToken->string[0] ) {
-		return;
-	}
-	interval = sv_statusInterval->integer;
-	if ( interval < 5 )   interval = 5;
-	if ( interval > 300 ) interval = 300;
-	now = Sys_Milliseconds();
-	if ( now - lastPush < interval * 1000 ) {
-		return;
-	}
-	lastPush = now;
-
-	post = StatusBuildPost();
-	if ( !post ) {
-		return;
-	}
-
+static void StatusSendPost( statusPost_t *post ) {
 #if defined(_WIN32)
 	if ( InterlockedCompareExchange( &statusBusy, 1, 0 ) != 0 ) {
-		free( post );	// previous push still in flight, skip this tick
+		free( post );	// previous push still in flight, skip this one
 		return;
 	}
 	{
@@ -323,4 +393,42 @@ void SV_StatusFrame( void ) {
 		free( post );
 	}
 #endif
+}
+
+/*
+================
+SV_StatusFrame
+
+Called from SV_Frame on every engine frame, so it keeps ticking while the
+host is in the lobby, watching a cutscene or paused by cl_paused.
+================
+*/
+void SV_StatusFrame( void ) {
+	static int		lastPush = 0;
+	int				now, interval;
+	statusPost_t	*post;
+
+	if ( !com_sv_running || !com_sv_running->integer ) {
+		return;
+	}
+	if ( !Cvar_VariableIntegerValue( "net_enabled" ) ) {
+		return;		// solo run: nothing to advertise, nobody could join anyway
+	}
+	if ( !sv_statusURL || !sv_statusURL->string[0] || !sv_statusToken || !sv_statusToken->string[0] ) {
+		return;
+	}
+	interval = sv_statusInterval->integer;
+	if ( interval < 5 )   interval = 5;
+	if ( interval > 300 ) interval = 300;
+	now = Sys_Milliseconds();
+	if ( now - lastPush < interval * 1000 ) {
+		return;
+	}
+	lastPush = now;
+
+	post = StatusBuildPost();
+	if ( !post ) {
+		return;
+	}
+	StatusSendPost( post );
 }
