@@ -289,7 +289,7 @@ deaths post promptly instead of waiting for the next status push.
 */
 static void StatusCheckDeath( void ) {
 	static char	lastDeath[192];
-	char		death[192], victim[128], killer[128], fields[384];
+	char		death[192], victim[128], killer[128], map[128], fields[512];
 	char		*v, *k;
 	const char	*d = Cvar_VariableString( "sv_coopDeath" );
 
@@ -309,7 +309,9 @@ static void StatusCheckDeath( void ) {
 
 	StatusJsonEscape( victim, sizeof( victim ), v );
 	StatusJsonEscape( killer, sizeof( killer ), k );
-	Com_sprintf( fields, sizeof( fields ), "\"victim\":\"%s\",\"killer\":\"%s\"", victim, killer );
+	StatusJsonEscape( map, sizeof( map ), sv_mapname ? sv_mapname->string : "" );
+	Com_sprintf( fields, sizeof( fields ),
+		"\"victim\":\"%s\",\"killer\":\"%s\",\"map\":\"%s\"", victim, killer, map );
 	StatusFire( "death", fields );
 }
 
