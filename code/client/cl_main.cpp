@@ -34,6 +34,10 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "qcommon/stringed_ingame.h"
 #include "sys/sys_loadlib.h"
 #include "SDL.h"	// coop: SDL_SetClipboardText for coop_invite
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>	// coop: ShellExecuteA for records
+#endif
 #include "qcommon/ojk_saved_game.h"
 
 #define	RETRANSMIT_TIMEOUT	3000	// time between connection packet retransmits
@@ -416,6 +420,27 @@ static void CL_CoopInvite_f( void ) {
 	}
 	SDL_SetClipboardText( invite );
 	Com_Printf( "coop_invite: copied \"%s\"\n", invite );
+}
+
+/*
+===================
+CL_Records_f
+
+coop: open the site's co-op page (live host status, map records, campaign
+runs) in the default browser. Falls back to copying the URL when there's
+no way to spawn a browser (non-Windows builds).
+===================
+*/
+#define ADVJK_COOP_PAGE "https://advjksite.koevetmc.workers.dev/coop"
+static void CL_Records_f( void ) {
+#if defined(_WIN32)
+	if ( (intptr_t)ShellExecuteA( NULL, "open", ADVJK_COOP_PAGE, NULL, NULL, SW_SHOWNORMAL ) > 32 ) {
+		Com_Printf( "records: opened %s\n", ADVJK_COOP_PAGE );
+		return;
+	}
+#endif
+	SDL_SetClipboardText( ADVJK_COOP_PAGE );
+	Com_Printf( "records: copied %s - paste it in a browser\n", ADVJK_COOP_PAGE );
 }
 
 void CL_Connect_f( void ) {
@@ -1978,6 +2003,7 @@ void CL_Init( void ) {
 	Cmd_AddCommand ("connect", CL_Connect_f);
 	Cmd_AddCommand ("coop_keys", CL_CoopKeys_f);	// coop: where do keys and mouse go right now
 	Cmd_AddCommand ("coop_invite", CL_CoopInvite_f);	// coop: copy the session address to the clipboard
+	Cmd_AddCommand ("records", CL_Records_f);	// coop: open the stats site's co-op page in the browser
 	Cmd_AddCommand ("uiclose", Menus_CloseAll);		// coop dev: close every menu (uimenu stacks them)
 	Cmd_AddCommand ("coop_waitjoin", CL_CoopWaitJoin_f);	// coop dev: hold a test config until the joiners are in
 	Cmd_AddCommand ("coop_waitcam", CL_CoopWaitCam_f);	// coop dev: ... and until the map's cinematic is over
