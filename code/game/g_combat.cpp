@@ -6225,6 +6225,13 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 		}
 	}
 
+	// coop: Simon hits like Battlegrounds Simon — ~50 a shot
+	if ( attacker && attacker->NPC && attacker->targetname
+		&& !Q_stricmp( attacker->targetname, "simon" ) )
+	{
+		take = take * 5 + 10;
+	}
+
 	//FIXME: Do not use this method of difficulty changing
 	// Scale the amount of damage given to the player based on the skill setting
 	/*
