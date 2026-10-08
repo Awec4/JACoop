@@ -780,6 +780,7 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 	level.time = levelTime;
 	G_CoopLobbyInit();	// coop: lobby map? fresh campaign?
 	G_CoopResetKills();	// coop: fresh map, fresh kill tally
+	G_CoopResetTrails();	// coop: fresh map, fresh trail buffers
 	G_CoopEndLevelInit();	// coop: nothing of the previous mission's end-of-level flow survives
 	level.globalTime = globalTime;
 	Q_strncpyz( level.mapname, mapname, sizeof(level.mapname) );
@@ -2167,6 +2168,7 @@ void G_RunFrame( int levelTime ) {
 
 	G_CoopDownedFrame();	// coop: bleed-out clocks, everyone-down flow
 	G_CoopRunRespawns();	// coop: bring dead players back beside a teammate
+	G_CoopTrailFrame();	// coop: sample opt-in player positions for the site's route map
 	{
 		extern void G_CoopPhysicsFrame( void );
 		G_CoopPhysicsFrame();	// coop: g_mpPhysics -> bg_mpPhysics + CS_COOP_PHYSICS
@@ -2510,4 +2512,80 @@ void G_CoopReportKill( int clientNum, int meansOfDeath ) {
 		}
 	}
 	gi.cvar_set( "sv_coopKills", buf );
+}
+
+/*
+================
+G_CoopTrailFrame / G_CoopResetTrails
+
+Opt-in movement trail: a player with "advjk_trail" = 1 in their userinfo
+gets their origin sampled every ~450ms. Points stage per client and
+flush through sv_coopTrail as "cn|x,y,z,x,y,z;cn|x,y,z" — under the
+1KB cvar limit. The engine polls the cvar each frame, appends the new
+points to its own buffers, and posts them when the map completes.
+================
+*/
+static char coopTrailPending[MAX_CLIENTS][768];
+static int coopTrailNext[MAX_CLIENTS];
+
+void G_CoopResetTrails( void ) {
+	memset( coopTrailPending, 0, sizeof( coopTrailPending ) );
+	memset( coopTrailNext, 0, sizeof( coopTrailNext ) );
+	gi.cvar_set( "sv_coopTrail", "" );
+}
+
+static void G_CoopTrailFlush( void ) {
+	char	buf[1000];
+	int		i, off = 0;
+
+	buf[0] = 0;
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		const char *p = coopTrailPending[i];
+		int		need;
+		if ( !p[0] ) {
+			continue;
+		}
+		need = strlen( p ) + 4;
+		if ( off + need >= (int)sizeof( buf ) ) {
+			break;	// next flush catches the rest
+		}
+		off += Com_sprintf( buf + off, sizeof( buf ) - off,
+			"%s%d|%s", off ? ";" : "", i, p );
+		coopTrailPending[i][0] = 0;
+	}
+	if ( off > 0 ) {
+		gi.cvar_set( "sv_coopTrail", buf );
+	}
+}
+
+void G_CoopTrailFrame( void ) {
+	static int nextFlush = 0;
+	int		i;
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		gentity_t	*ent = &g_entities[i];
+		char		ui[MAX_INFO_STRING];
+		int			len;
+
+		if ( !G_CoopIsPlayer( ent ) || level.time < coopTrailNext[i] ) {
+			continue;
+		}
+		coopTrailNext[i] = level.time + 450;
+		gi.GetUserinfo( i, ui, sizeof( ui ) );
+		if ( !atoi( Info_ValueForKey( ui, "advjk_trail" ) ) ) {
+			continue;	// opt-in only
+		}
+		len = strlen( coopTrailPending[i] );
+		if ( len < (int)sizeof( coopTrailPending[i] ) - 40 ) {
+			Com_sprintf( coopTrailPending[i] + len, sizeof( coopTrailPending[i] ) - len,
+				"%s%d,%d,%d", len ? "," : "",
+				(int)ent->currentOrigin[0], (int)ent->currentOrigin[1],
+				(int)ent->currentOrigin[2] );
+		}
+	}
+
+	if ( level.time >= nextFlush ) {
+		nextFlush = level.time + 400;
+		G_CoopTrailFlush();
+	}
 }

@@ -70,6 +70,9 @@ void SV_StatusInit( void ) {
 	// game -> engine kill tally: "cn,mod,count;cn,mod,count" rewritten on
 	// every NPC kill; StatusPostMapTime ships it with the completed map.
 	Cvar_Get( "sv_coopKills", "", CVAR_TEMP );
+	// game -> engine trail channel: "cn|x,y,z,x,y,z;cn|x,y,z" flushed by
+	// the game as opt-in players move; StatusCheckTrail accumulates it.
+	Cvar_Get( "sv_coopTrail", "", CVAR_TEMP );
 }
 
 /*
@@ -116,7 +119,7 @@ static void StatusHeaderToken( char *dst, size_t dstSize, const char *src ) {
 typedef struct statusPost_s {
 	char	url[512];
 	char	token[256];
-	char	body[4096];
+	char	body[49152];   // trail posts carry a full route, not just a line
 } statusPost_t;
 
 /*
@@ -419,6 +422,73 @@ static void StatusCheckDeath( void ) {
 
 /*
 ================
+Trail accumulation + posting
+
+The game stages opt-in player positions through sv_coopTrail
+("cn|x,y,z,x,y,z;cn|x,y,z"). StatusCheckTrail appends each flush to a
+per-client buffer; StatusPostTrails ships every buffer when the map
+ends, one post per player, then clears for the next map. ~24KB per
+player ≈ 20 minutes of route at 450ms sampling.
+================
+*/
+static char statusTrail[MAX_CLIENTS][24576];
+
+static void StatusCheckTrail( void ) {
+	static char	lastTrail[1000];
+	char		tally[1000], *seg;
+	const char	*d = Cvar_VariableString( "sv_coopTrail" );
+
+	if ( !d[0] || !strcmp( d, lastTrail ) ) {
+		return;
+	}
+	Q_strncpyz( lastTrail, d, sizeof( lastTrail ) );
+
+	Q_strncpyz( tally, d, sizeof( tally ) );
+	for ( seg = strtok( tally, ";" ); seg; seg = strtok( NULL, ";" ) ) {
+		char	*bar = strchr( seg, '|' );
+		int		cn, len;
+		if ( !bar ) {
+			continue;
+		}
+		*bar++ = 0;
+		cn = atoi( seg );
+		if ( cn < 0 || cn >= MAX_CLIENTS ) {
+			continue;
+		}
+		len = strlen( statusTrail[cn] );
+		if ( len + strlen( bar ) + 2 < sizeof( statusTrail[cn] ) ) {
+			Com_sprintf( statusTrail[cn] + len, sizeof( statusTrail[cn] ) - len,
+				"%s%s", len ? "," : "", bar );
+		}
+	}
+}
+
+static void StatusPostTrails( const char *mapname ) {
+	int	i;
+	char	map[128];
+
+	StatusJsonEscape( map, sizeof( map ), mapname );
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		char	fields[33000], escName[MAX_NAME_LENGTH * 2];
+		client_t *cl;
+
+		if ( !statusTrail[i][0] ) {
+			continue;
+		}
+		cl = svs.clients ? &svs.clients[i] : NULL;
+		if ( cl && cl->name[0] ) {
+			StatusJsonEscape( escName, sizeof( escName ), cl->name );
+			Com_sprintf( fields, sizeof( fields ),
+				"\"map\":\"%s\",\"name\":\"%s\",\"p\":\"%s\"%s",
+				map, escName, statusTrail[i], StatusAccountFields( cl ) );
+			StatusFire( "trail", fields );
+		}
+		statusTrail[i][0] = 0;
+	}
+}
+
+/*
+================
 SV_StatusMapStarted
 
 Called from SV_SpawnServer once the new map name is known. A change to a
@@ -431,6 +501,7 @@ void SV_StatusMapStarted( const char *mapname ) {
 		return;		// solo hosts never report
 	}
 	if ( statusMapStart > 0 && statusLastMap[0] && Q_stricmp( statusLastMap, mapname ) != 0 ) {
+		StatusPostTrails( statusLastMap );
 		StatusPostMapTime( statusLastMap, ( Sys_Milliseconds() - statusMapStart ) / 1000 );
 	}
 	Q_strncpyz( statusLastMap, mapname, sizeof( statusLastMap ) );
@@ -596,6 +667,7 @@ void SV_StatusFrame( void ) {
 	}
 
 	StatusCheckDeath();
+	StatusCheckTrail();
 
 	interval = sv_statusInterval->integer;
 	if ( interval < 5 )   interval = 5;
