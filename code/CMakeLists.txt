@@ -37,7 +37,8 @@ if(BuildSPEngine OR BuildJK2SPEngine)
 		# sendto, ...) that net_ip.cpp pulls in for the co-op UDP transport.
 		# Vanilla singleplayer had no networking, so upstream only linked
 		# winmm here; the MP engine links wsock32 the same way.
-		set(SPEngineLibraries "winmm" "wsock32")
+		# winhttp: sv_status.cpp uses WinHTTP for the co-op status push.
+		set(SPEngineLibraries "winmm" "wsock32" "winhttp")
 	endif(WIN32)
 	# Defines
 	set(SPEngineDefines ${SharedDefines} "_JK2EXE") # it's called JK2EXE but it really just means Singleplayer Exe
@@ -227,6 +228,7 @@ if(BuildSPEngine OR BuildJK2SPEngine)
 		"${SPDir}/server/sv_main.cpp"
 		"${SPDir}/server/sv_savegame.cpp"
 		"${SPDir}/server/sv_snapshot.cpp"
+		"${SPDir}/server/sv_status.cpp"
 		"${SPDir}/server/sv_world.cpp"
 		"${SPDir}/server/exe_headers.h"
 		"${SPDir}/server/server.h"

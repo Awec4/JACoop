@@ -504,6 +504,7 @@ void SV_Init (void) {
 	sv_compress_saved_games = Cvar_Get ("sv_compress_saved_games", "1", 0);
 
 	SV_CoopTransferInit();	// coop: host -> joiner pk3 transfer cvars
+	SV_StatusInit();		// coop: website status push cvars
 
 	// Only allocated once, no point in moving it around and fragmenting
 	// create a heap for Ghoul2 to use for game side model vertex transforms used in collision detection

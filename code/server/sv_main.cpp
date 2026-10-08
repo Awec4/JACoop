@@ -620,6 +620,8 @@ void SV_Frame( int msec,float fractionMsec ) {
 		return;
 	}
 
+	SV_StatusFrame();	// coop: keep publishing host status even while paused
+
  	extern void SE_CheckForLanguageUpdates(void);
 	SE_CheckForLanguageUpdates();	// will fast-return else load different language if menu changed it
 

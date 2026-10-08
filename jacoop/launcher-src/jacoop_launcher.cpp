@@ -203,6 +203,38 @@ static void MoveOldSaves() {
 	RemoveDirectoryW( oldDir.c_str() );	// only succeeds once empty
 }
 
+// advjk://join/<ip[:port]> one-click join from the website. The scheme is
+// registered under HKCU (no admin, self-healing) on every launch so simply
+// moving the JACoop folder keeps the links working.
+static void RegisterJoinProtocol( const wchar_t *exePath ) {
+	HKEY h;
+	if ( RegCreateKeyExW( HKEY_CURRENT_USER, L"Software\\Classes\\advjk", 0, NULL, 0, KEY_WRITE, NULL, &h, NULL ) == ERROR_SUCCESS ) {
+		const wchar_t *desc = L"URL:AdvancedJK Coop";
+		RegSetValueExW( h, NULL, 0, REG_SZ, (const BYTE *)desc, (DWORD)( wcslen( desc ) + 1 ) * sizeof( wchar_t ) );
+		RegSetValueExW( h, L"URL Protocol", 0, REG_SZ, (const BYTE *)L"", sizeof( wchar_t ) );
+		RegCloseKey( h );
+	}
+	if ( RegCreateKeyExW( HKEY_CURRENT_USER, L"Software\\Classes\\advjk\\shell\\open\\command", 0, NULL, 0, KEY_WRITE, NULL, &h, NULL ) == ERROR_SUCCESS ) {
+		std::wstring cmd = L"\"" + std::wstring( exePath ) + L"\" \"%1\"";
+		RegSetValueExW( h, NULL, 0, REG_SZ, (const BYTE *)cmd.c_str(), (DWORD)( cmd.size() + 1 ) * sizeof( wchar_t ) );
+		RegCloseKey( h );
+	}
+}
+
+// the address lands unquoted in the engine command line (+set ui_coopJoin):
+// keep it to characters a server address can actually contain so a crafted
+// advjk:// link cannot smuggle extra +commands
+static std::wstring SanitizeAddress( std::wstring a ) {
+	std::wstring out;
+	for ( wchar_t c : a ) {
+		if ( iswalnum( c ) || c == L'.' || c == L'-' || c == L'_' || c == L':' || c == L'[' || c == L']' ) {
+			out += c;
+		}
+	}
+	if ( out.size() > 64 ) out.resize( 64 );
+	return out;
+}
+
 int WINAPI wWinMain( HINSTANCE, HINSTANCE, LPWSTR, int ) {
 	wchar_t exePath[MAX_PATH];
 	GetModuleFileNameW( NULL, exePath, MAX_PATH );
@@ -210,11 +242,29 @@ int WINAPI wWinMain( HINSTANCE, HINSTANCE, LPWSTR, int ) {
 	g_root = g_root.substr( 0, g_root.find_last_of( L"\\/" ) );
 	g_ini = Join( g_root, L"jacoop.ini" );
 
+	RegisterJoinProtocol( exePath );
+
 	int argc = 0;
 	LPWSTR *argv = CommandLineToArgvW( GetCommandLineW(), &argc );
 	std::wstring mode = argc > 1 ? argv[1] : L"host";
 	std::wstring address = argc > 2 ? argv[2] : L"";
 	for ( auto &c : mode ) c = (wchar_t)towlower( c );
+
+	// advjk://join/<addr> or advjk://<addr> from the website
+	if ( mode.rfind( L"advjk:", 0 ) == 0 ) {
+		std::wstring u = mode;
+		size_t p = u.find( L':' );
+		u = u.substr( p + 1 );
+		while ( !u.empty() && u.front() == L'/' ) u.erase( u.begin() );
+		if ( u.rfind( L"join/", 0 ) == 0 ) u = u.substr( 5 );
+		while ( !u.empty() && ( u.front() == L'/' || u.back() == L'/' ) ) {
+			if ( u.front() == L'/' ) u.erase( u.begin() );
+			else u.pop_back();
+		}
+		mode = L"join";
+		address = u;
+	}
+	address = SanitizeAddress( address );
 
 	std::wstring gameData = FindGameData();
 	if ( gameData.empty() ) return 1;

@@ -300,6 +300,10 @@ void SV_UpdateServerCommandsToClient( client_t *client, msg_t *msg );
 extern cvar_t	*sv_coopTransfer;
 extern cvar_t	*sv_coopTransferPending;
 void SV_CoopTransferInit( void );
+
+// sv_status.cpp -- coop: publish this host's status to a web API
+void SV_StatusInit( void );
+void SV_StatusFrame( void );
 void SV_CoopTransferFrame( void );
 void SV_CoopTransferShutdown( void );
 void SV_CoopTransferClose( client_t *cl );
