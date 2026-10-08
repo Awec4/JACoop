@@ -1523,6 +1523,11 @@ void ClientCommand( int clientNum ) {
 		G_CoopEndLevelTestCommand();
 		return;
 	}
+	if (Q_stricmp (cmd, "simonsays") == 0)
+	{	// coop: Simon the Killer Ewok — the Galactic Battlegrounds cheat, on a jawa_armed (any player, no cheats needed)
+		G_CoopSimonCommand( ent );
+		return;
+	}
 	if (Q_stricmp (cmd, "coop_start") == 0 || Q_stricmp (cmd, "coop_go") == 0 || Q_stricmp (cmd, "coop_cancel") == 0 || Q_stricmp (cmd, "coop_chardone") == 0)
 	{	// coop: lobby start flow (g_coop_lobby.cpp)
 		G_CoopStartCommand( ent, cmd );

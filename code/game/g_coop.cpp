@@ -2941,6 +2941,85 @@ void G_CoopPrintScorecard( void )
 
 /*
 ==============================================================================
+Simon the Killer Ewok (Galactic Battlegrounds homage)
+
+"simonsays" in the console drops a jawa_armed — the closest thing JA ships
+to a murderous ewok — beside the caller, with Simon's 325 hp. Hostile, so
+the lobby that summons him had better mean it. One Simon at a time, 30 s
+between calls.
+==============================================================================
+*/
+void G_CoopSimonCommand( gentity_t *ent )
+{
+	static int	coopSimonNext = 0;
+
+	if ( !ent || !ent->client )
+	{
+		return;
+	}
+	if ( level.time < coopSimonNext )
+	{
+		G_CoopPrintTr( ent->s.number, "print", "Simon est deja de sortie.\n", "Simon is already out there.\n" );
+		return;
+	}
+	for ( int i = 0; i < level.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->health > 0 && e->targetname && !Q_stricmp( e->targetname, "simon" ) )
+		{
+			G_CoopPrintTr( ent->s.number, "print", "Simon est deja de sortie.\n", "Simon is already out there.\n" );
+			return;
+		}
+	}
+	coopSimonNext = level.time + 30000;
+
+	// same spot math as NPC_Spawn_f, but at the caller instead of player 0
+	gentity_t *spawner = G_Spawn();
+	if ( !spawner )
+	{
+		return;
+	}
+	spawner->e_ThinkFunc = thinkF_G_FreeEntity;
+	spawner->nextthink = level.time + FRAMETIME;
+
+	vec3_t	forward, end;
+	trace_t	tr;
+	AngleVectors( ent->client->ps.viewangles, forward, NULL, NULL );
+	VectorNormalize( forward );
+	VectorMA( ent->currentOrigin, 64, forward, end );
+	gi.trace( &tr, ent->currentOrigin, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	VectorCopy( tr.endpos, end );
+	end[2] -= 24;
+	gi.trace( &tr, tr.endpos, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	VectorCopy( tr.endpos, end );
+	end[2] += 24;
+	G_SetOrigin( spawner, end );
+	VectorCopy( spawner->currentOrigin, spawner->s.origin );
+	spawner->s.angles[1] = ent->client->ps.viewangles[1];
+	gi.linkentity( spawner );
+
+	spawner->NPC_type = G_NewString( "jawa_armed" );
+	spawner->NPC_targetname = G_NewString( "simon" );
+	spawner->count = 1;
+	spawner->delay = 0;
+	spawner->wait = 500;
+	NPC_Spawn( spawner, spawner, spawner );
+
+	// Simon himself: Battlegrounds numbers, hostile like the original
+	for ( int i = 0; i < level.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->targetname && !Q_stricmp( e->targetname, "simon" ) )
+		{
+			e->health = e->max_health = e->client->ps.stats[STAT_HEALTH] = e->client->ps.stats[STAT_MAX_HEALTH] = 325;
+		}
+	}
+	G_CoopPrintTr( -1, "print", "^1SIMON DIT : ^7%s a invoque Simon l'Ewok tueur !\n",
+		"^1SIMON SAYS: ^7%s summoned Simon the Killer Ewok!\n", ent->client->pers.netname );
+}
+
+/*
+==============================================================================
 Catch-up teleport ("coop_cometome" client command)
 
 Drops the caller beside its nearest living teammate, the same spot-finding
