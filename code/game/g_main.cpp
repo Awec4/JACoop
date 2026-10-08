@@ -782,6 +782,14 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 	G_CoopResetKills();	// coop: fresh map, fresh kill tally
 	G_CoopResetTrails();	// coop: fresh map, fresh trail buffers
 	G_CoopEndLevelInit();	// coop: nothing of the previous mission's end-of-level flow survives
+	{
+		// coop: NG+ cycles (g_coopNGPlus) — tell everyone how hard this run is
+		extern cvar_t *g_coopNGPlus;
+		if ( g_coopNGPlus && g_coopNGPlus->integer > 0 )
+		{
+			gi.SendServerCommand( -1, va( "print \"^3NEW GAME+ %i — enemies are stronger.\n\"", g_coopNGPlus->integer ) );
+		}
+	}
 	level.globalTime = globalTime;
 	Q_strncpyz( level.mapname, mapname, sizeof(level.mapname) );
 	if ( spawntarget != NULL && spawntarget[0] )

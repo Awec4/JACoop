@@ -337,8 +337,8 @@ static void StatusPostMapTime( const char *mapname, int seconds ) {
 	StatusBuildKills( killsJson, sizeof( killsJson ) );
 
 	Com_sprintf( fields, sizeof( fields ),
-		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"players\":[%s],\"kills\":[%s]",
-		map, seconds, hostname, playersJson, killsJson );
+		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"ng\":%i,\"players\":[%s],\"kills\":[%s]",
+		map, seconds, hostname, Cvar_VariableIntegerValue( "g_coopNGPlus" ), playersJson, killsJson );
 	StatusFire( "time", fields );
 }
 

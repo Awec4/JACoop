@@ -6214,6 +6214,17 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, const
 
 	take = damage;
 
+	// coop: NG+ cycles make enemy NPCs hit harder (+25% damage per tier)
+	{
+		extern cvar_t *g_coopNGPlus;
+		if ( g_coopNGPlus && g_coopNGPlus->integer > 0 && attacker && attacker->NPC
+			&& attacker->client && attacker->client->playerTeam == TEAM_ENEMY
+			&& targ->client && targ->client->playerTeam != TEAM_ENEMY )
+		{
+			take = (int)ceilf( take * ( 1.0f + 0.25f * g_coopNGPlus->integer ) );
+		}
+	}
+
 	//FIXME: Do not use this method of difficulty changing
 	// Scale the amount of damage given to the player based on the skill setting
 	/*

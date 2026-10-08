@@ -2189,6 +2189,7 @@ cvar_t	*g_coopSkipCinematics;	// 1 = the host auto-skips every cinematic for eve
 cvar_t	*g_coopCatchup;		// 1 = coop_cometome teleports you beside a living teammate
 cvar_t	*g_coopPickupShare;	// percent of ammo/health/armor pickups shared with nearby teammates
 cvar_t	*g_coopEnemyHealth;	// enemy NPC hit points scale (1.0 = stock)
+cvar_t	*g_coopNGPlus;		// NG+ tier: 0 = normal run, 1+ = harder enemies each cycle
 cvar_t	*g_mpPhysics;		// 1 = multiplayer movement constants for every player
 cvar_t	*g_coopVersus;		// 1 = players may join TEAM_ENEMY and hunt the Jedi (coop_team)
 
@@ -2211,6 +2212,8 @@ void G_CoopInitDownedCvars( void )
 	g_coopCatchup = gi.cvar( "g_coopCatchup", "1", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	g_coopPickupShare = gi.cvar( "g_coopPickupShare", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	g_coopEnemyHealth = gi.cvar( "g_coopEnemyHealth", "1", CVAR_ARCHIVE );
+	// serverinfo: joiners and the site see which NG+ cycle the host is on
+	g_coopNGPlus = gi.cvar( "g_coopNGPlus", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	// serverinfo: joiners read the movement rules in CS_COOP_PHYSICS for prediction
 	g_mpPhysics = gi.cvar( "g_mpPhysics", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	// serverinfo: versus sessions show up in server info and the scoreboard
