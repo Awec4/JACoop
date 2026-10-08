@@ -835,7 +835,29 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 		char	saber1Name[MAX_QPATH];
 		const char	*var;
 
-		gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( sCVARNAME_PLAYERSAVE, slot ), s, sizeof(s) );
+		// coop NG+: on a fresh campaign (yavin1) with g_coopNGPlus set, the kor2
+		// snapshot takes precedence — the normal playersave holds lobby gear.
+		const char	*psBase = sCVARNAME_PLAYERSAVE;
+		const char	*ammoBase = "playerammo";
+		const char	*invBase = "playerinv";
+		const char	*fpBase = "playerfplvl";
+
+		gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( psBase, slot ), s, sizeof(s) );
+		{
+			extern cvar_t *g_coopNGPlus;
+			if ( g_coopNGPlus && g_coopNGPlus->integer > 0 && !Q_stricmp( level.mapname, "yavin1" ) )
+			{
+				char	ng[MAX_STRING_CHARS];
+				gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "ngsave", slot ), ng, sizeof(ng) );
+				if ( ng[0] )
+				{
+					Q_strncpyz( s, ng, sizeof(s) );
+					ammoBase = "ngammo";
+					invBase = "nginv";
+					fpBase = "ngfplvl";
+				}
+			}
+		}
 
 		if (strlen(s))	// actually this would be safe anyway because of the way sscanf() works, but this is clearer
 		{//				|general info				  |-force powers |-saber 1										   |-saber 2										  |-general saber
@@ -945,7 +967,7 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 //			SetClientViewAngle( ent, ent->client->ps.viewangles);
 
 			//ammo
-			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "playerammo", slot ), s, sizeof(s) );
+			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( ammoBase, slot ), s, sizeof(s) );
 			i=0;
 			var = strtok( s, " " );
 			while( var != NULL )
@@ -958,7 +980,7 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 			assert (i==AMMO_MAX);
 
 			//inventory
-			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "playerinv", slot ), s, sizeof(s) );
+			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( invBase, slot ), s, sizeof(s) );
 			i=0;
 			var = strtok( s, " " );
 			while( var != NULL )
@@ -973,7 +995,7 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 
 			// the new JK2 stuff - force powers, etc...
 			//
-			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "playerfplvl", slot ), s, sizeof(s) );
+			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( fpBase, slot ), s, sizeof(s) );
 			i=0;
 			var = strtok( s, " " );
 			while( var != NULL )

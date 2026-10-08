@@ -249,6 +249,18 @@ void SV_Player_EndOfLevelSave(void)
 			s2 = va("%s %i",s2, pState->forcePowerLevel[i]);
 		}
 		Cvar_Set( SV_PlayerSaveCvarName( "playerfplvl", slot ), s2 );
+
+		// coop NG+: kor2 is the campaign's last map, so its carry-over is the
+		// gear a new cycle should inherit. A fresh campaign resets the normal
+		// playersave set (lobby gear) — mirror kor2's into an "ng" set the game
+		// restores instead when g_coopNGPlus is on.
+		if ( !Q_stricmp( Cvar_VariableString( "mapname" ), "kor2" ) )
+		{
+			Cvar_Set( SV_PlayerSaveCvarName( "ngsave", slot ), Cvar_VariableString( SV_PlayerSaveCvarName( sCVARNAME_PLAYERSAVE, slot ) ) );
+			Cvar_Set( SV_PlayerSaveCvarName( "ngammo", slot ), Cvar_VariableString( SV_PlayerSaveCvarName( "playerammo", slot ) ) );
+			Cvar_Set( SV_PlayerSaveCvarName( "nginv", slot ), Cvar_VariableString( SV_PlayerSaveCvarName( "playerinv", slot ) ) );
+			Cvar_Set( SV_PlayerSaveCvarName( "ngfplvl", slot ), Cvar_VariableString( SV_PlayerSaveCvarName( "playerfplvl", slot ) ) );
+		}
 	}
 	}	// for slot
 }
