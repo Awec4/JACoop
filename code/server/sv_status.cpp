@@ -124,7 +124,35 @@ Fills dst with [{"name":...,"score":N,"ping":N}, ...] for the site's
 player list — same fields the getstatus reply in sv_main.cpp reports.
 ================
 */
-static void StatusBuildRoster( char *dst, size_t dstSize ) {
+/*
+================
+StatusAccountFields
+
+Returns `"account":"x","key":"y"` (with the leading comma) when the
+client set advjk_account + advjk_key — the site verifies the pair to
+credit runs to real accounts instead of display names. "" when unset.
+================
+*/
+static const char *StatusAccountFields( client_t *cl ) {
+	static char	buf[160];
+	const char	*acct, *key;
+	char		escA[64], escK[64];
+
+	if ( !cl->userinfo[0] ) {
+		return "";
+	}
+	acct = Info_ValueForKey( cl->userinfo, "advjk_account" );
+	key  = Info_ValueForKey( cl->userinfo, "advjk_key" );
+	if ( !acct[0] || !key[0] ) {
+		return "";
+	}
+	StatusJsonEscape( escA, sizeof( escA ), acct );
+	StatusJsonEscape( escK, sizeof( escK ), key );
+	Com_sprintf( buf, sizeof( buf ), ",\"account\":\"%s\",\"key\":\"%s\"", escA, escK );
+	return buf;
+}
+
+static void StatusBuildRoster( char *dst, size_t dstSize, qboolean withKeys ) {
 	int		i, off = 0;
 
 	dst[0] = 0;
@@ -143,9 +171,12 @@ static void StatusBuildRoster( char *dst, size_t dstSize ) {
 			score = cl->gentity->client->persistant[PERS_SCORE];
 		}
 		StatusJsonEscape( escName, sizeof( escName ), cl->name );
+		// keys only travel in the authenticated run/death posts — the
+		// public status roster must never leak them.
 		off += Com_sprintf( dst + off, dstSize - off,
-			"%s{\"name\":\"%s\",\"score\":%i,\"ping\":%i}",
-			off ? "," : "", escName, score, cl->ping );
+			"%s{\"name\":\"%s\",\"score\":%i,\"ping\":%i%s}",
+			off ? "," : "", escName, score, cl->ping,
+			withKeys ? StatusAccountFields( cl ) : "" );
 	}
 	dst[dstSize - 1] = 0;
 }
@@ -213,7 +244,7 @@ static statusPost_t *StatusBuildPost( void ) {
 	StatusJsonEscape( map, sizeof( map ), sv_mapname ? sv_mapname->string : "" );
 	StatusJsonEscape( join, sizeof( join ), sv_statusJoin->string );
 
-	StatusBuildRoster( playersJson, sizeof( playersJson ) );
+	StatusBuildRoster( playersJson, sizeof( playersJson ), qfalse );
 	if ( statusMapStart > 0 ) {
 		elapsed = ( Sys_Milliseconds() - statusMapStart ) / 1000;
 	}
@@ -253,7 +284,7 @@ static void StatusPostMapTime( const char *mapname, int seconds ) {
 
 	StatusJsonEscape( hostname, sizeof( hostname ), sv_hostname ? sv_hostname->string : "" );
 	StatusJsonEscape( map, sizeof( map ), mapname );
-	StatusBuildRoster( playersJson, sizeof( playersJson ) );
+	StatusBuildRoster( playersJson, sizeof( playersJson ), qtrue );
 
 	Com_sprintf( fields, sizeof( fields ),
 		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"players\":[%s]",
@@ -289,8 +320,9 @@ deaths post promptly instead of waiting for the next status push.
 */
 static void StatusCheckDeath( void ) {
 	static char	lastDeath[192];
-	char		death[192], victim[128], killer[128], map[128], fields[512];
-	char		*v, *k;
+	char		death[192], victim[128], killer[128], map[128],
+			account[128], vkey[128], fields[640];
+	char		*v, *k, *a, *kk;
 	const char	*d = Cvar_VariableString( "sv_coopDeath" );
 
 	if ( !d[0] || !strcmp( d, lastDeath ) ) {
@@ -305,13 +337,36 @@ static void StatusCheckDeath( void ) {
 	k = strchr( v, '|' );
 	if ( !k ) return;
 	*k++ = 0;
-	// death now holds the seq (unused), v = victim, k = killer
+	// death now holds the seq (unused), v = victim, k = killer;
+	// optional "|account|key" tail links the victim to a site account
+	account[0] = vkey[0] = 0;
+	a = strchr( k, '|' );
+	if ( a ) {
+		*a++ = 0;
+		kk = strchr( a, '|' );
+		if ( kk ) {
+			*kk++ = 0;
+			Q_strncpyz( vkey, kk, sizeof( vkey ) );
+		}
+		Q_strncpyz( account, a, sizeof( account ) );
+	}
 
 	StatusJsonEscape( victim, sizeof( victim ), v );
 	StatusJsonEscape( killer, sizeof( killer ), k );
 	StatusJsonEscape( map, sizeof( map ), sv_mapname ? sv_mapname->string : "" );
-	Com_sprintf( fields, sizeof( fields ),
-		"\"victim\":\"%s\",\"killer\":\"%s\",\"map\":\"%s\"", victim, killer, map );
+	{
+		char	escA[128], escK[128], acctFields[320];
+		acctFields[0] = 0;
+		if ( account[0] && vkey[0] ) {
+			StatusJsonEscape( escA, sizeof( escA ), account );
+			StatusJsonEscape( escK, sizeof( escK ), vkey );
+			Com_sprintf( acctFields, sizeof( acctFields ),
+				",\"account\":\"%s\",\"key\":\"%s\"", escA, escK );
+		}
+		Com_sprintf( fields, sizeof( fields ),
+			"\"victim\":\"%s\",\"killer\":\"%s\",\"map\":\"%s\"%s",
+			victim, killer, map, acctFields );
+	}
 	StatusFire( "death", fields );
 }
 

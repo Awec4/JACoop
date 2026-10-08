@@ -1922,6 +1922,12 @@ void CL_Init( void ) {
 	// in the connect userinfo. Not archived.
 	Cvar_Get ("password", "", CVAR_USERINFO );
 
+	// coop: site account link — `seta advjk_account <site username>` +
+	// `seta advjk_key <key from your site dashboard>`. Rides the connect
+	// userinfo so the host can credit runs/achievements to real accounts.
+	Cvar_Get ("advjk_account", "", CVAR_USERINFO | CVAR_ARCHIVE );
+	Cvar_Get ("advjk_key", "", CVAR_USERINFO | CVAR_ARCHIVE );
+
 #ifdef JK2_MODE
 	// this is required for savegame compatibility - not ever actually used
 	Cvar_Get ("snaps", "20", CVAR_USERINFO );

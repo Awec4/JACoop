@@ -2460,8 +2460,15 @@ Writes "seq|victim|killer" into the sv_coopDeath cvar — the engine's
 status code polls it and posts each player death to the site feed.
 ================
 */
-void G_CoopReportDeath( const char *victim, const char *killer ) {
+void G_CoopReportDeath( const char *victim, const char *killer, int clientNum ) {
 	static int seq = 0;
-	gi.cvar_set( "sv_coopDeath", va( "%i|%s|%s", ++seq,
-		victim ? victim : "?", killer ? killer : "world" ) );
+	char ui[MAX_INFO_STRING] = "";
+	const char *acct = "", *key = "";
+	if ( clientNum >= 0 && clientNum < MAX_CLIENTS ) {
+		gi.GetUserinfo( clientNum, ui, sizeof( ui ) );
+		acct = Info_ValueForKey( ui, "advjk_account" );
+		key = Info_ValueForKey( ui, "advjk_key" );
+	}
+	gi.cvar_set( "sv_coopDeath", va( "%i|%s|%s|%s|%s", ++seq,
+		victim ? victim : "?", killer ? killer : "world", acct, key ) );
 }

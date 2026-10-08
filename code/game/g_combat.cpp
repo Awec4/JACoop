@@ -3699,7 +3699,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 		} else if ( attacker && attacker->classname ) {
 			killer = attacker->classname;
 		}
-		G_CoopReportDeath( self->client->pers.netname, killer );
+		G_CoopReportDeath( self->client->pers.netname, killer, self->s.number );
 	}
 
 	// If the entity is in a vehicle.
