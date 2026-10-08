@@ -3050,11 +3050,25 @@ static void CG_DrawCrosshair( vec3_t worldPoint )
 	}
 	else
 	{
-		hShader = cgs.media.crosshairShader[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ];
+		extern vmCvar_t cg_crosshairDot;
+		if ( cg_crosshairDot.integer > 0 )
+		{
+			// coop: plain dot crosshair — cg_crosshairDot sets the size (in 640x480 units)
+			float d = (float)cg_crosshairDot.integer;
+			if ( worldAnchored )
+				d = CG_FullWidth2DW( d );
+			cgi_R_DrawStretchPic( x + cg.refdef.x + 0.5f * (640 - d),
+				y + cg.refdef.y + 0.5f * (480 - d),
+				d, d, 0, 0, 1, 1, cgs.media.whiteShader );
+		}
+		else
+		{
+			hShader = cgs.media.crosshairShader[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ];
 
-		cgi_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (640 - cw),
-			y + cg.refdef.y + 0.5 * (480 - ch),
-			cw, ch, 0, 0, 1, 1, hShader );
+			cgi_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (640 - cw),
+				y + cg.refdef.y + 0.5 * (480 - ch),
+				cw, ch, 0, 0, 1, 1, hShader );
+		}
 	}
 
 	if ( cg.forceCrosshairStartTime && cg_crosshairForceHint.integer ) // drawing extra bits
