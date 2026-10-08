@@ -5,8 +5,9 @@ sv_status.cpp -- coop: publish this host's status to a web API.
 When sv_statusURL and sv_statusToken are set, a co-op host POSTs a small JSON
 snapshot of itself every sv_statusInterval seconds:
 
-    {"token":..., "hostname":..., "map":..., "players":N, "maxplayers":N,
-     "lobby":0/1, "join":"ip:port", "protocol":N}
+    {"token":..., "hostname":..., "map":..., "maxplayers":N,
+     "lobby":0/1, "join":"ip:port", "protocol":N,
+     "players":[{"name":"...","score":N,"ping":N}]}
 
 plus an "Authorization: Bearer <token>" header, so the same request works
 whether the endpoint checks the header or the body field (the AdvJKSite
@@ -103,7 +104,7 @@ static void StatusHeaderToken( char *dst, size_t dstSize, const char *src ) {
 typedef struct {
 	char	url[512];
 	char	token[256];
-	char	body[2048];
+	char	body[4096];
 } statusPost_t;
 
 /*
@@ -116,7 +117,8 @@ self-contained request the worker can send without touching engine state.
 */
 static statusPost_t *StatusBuildPost( void ) {
 	char	token[256], hostname[128], map[128], join[256];
-	int		i, players = 0, maxcl, lobby;
+	char	playersJson[1600];
+	int		i, off = 0, maxcl, lobby;
 	statusPost_t	*post;
 
 	StatusJsonEscape( token, sizeof( token ), sv_statusToken->string );
@@ -124,13 +126,28 @@ static statusPost_t *StatusBuildPost( void ) {
 	StatusJsonEscape( map, sizeof( map ), sv_mapname ? sv_mapname->string : "" );
 	StatusJsonEscape( join, sizeof( join ), sv_statusJoin->string );
 
+	// Roster for the site's player list: name/score/ping per connected client,
+	// same fields the getstatus reply in sv_main.cpp reports.
+	playersJson[0] = 0;
 	if ( svs.clients ) {
-		for ( i = 0; i < MAX_CLIENTS; i++ ) {
-			if ( svs.clients[i].state >= CS_CONNECTED ) {
-				players++;
+		for ( i = 0; i < MAX_CLIENTS && off < (int)sizeof( playersJson ) - 96; i++ ) {
+			client_t	*cl = &svs.clients[i];
+			char		escName[MAX_NAME_LENGTH * 2];
+			int			score = 0;
+
+			if ( cl->state < CS_CONNECTED ) {
+				continue;
 			}
+			if ( cl->gentity && cl->gentity->client ) {
+				score = cl->gentity->client->persistant[PERS_SCORE];
+			}
+			StatusJsonEscape( escName, sizeof( escName ), cl->name );
+			off += Com_sprintf( playersJson + off, sizeof( playersJson ) - off,
+				"%s{\"name\":\"%s\",\"score\":%i,\"ping\":%i}",
+				off ? "," : "", escName, score, cl->ping );
 		}
 	}
+	playersJson[sizeof( playersJson ) - 1] = 0;
 	maxcl = sv_maxclients ? sv_maxclients->integer : MAX_CLIENTS;
 	lobby = Cvar_VariableIntegerValue( "g_coopLobby" ) ? 1 : 0;
 
@@ -142,9 +159,9 @@ static statusPost_t *StatusBuildPost( void ) {
 	StatusHeaderToken( post->token, sizeof( post->token ), sv_statusToken->string );
 	Com_sprintf( post->body, sizeof( post->body ),
 		"{\"token\":\"%s\",\"hostname\":\"%s\",\"map\":\"%s\","
-		"\"players\":%i,\"maxplayers\":%i,\"lobby\":%i,"
+		"\"players\":[%s],\"maxplayers\":%i,\"lobby\":%i,"
 		"\"join\":\"%s\",\"protocol\":%i}",
-		token, hostname, map, players, maxcl, lobby, join, PROTOCOL_VERSION );
+		token, hostname, map, playersJson, maxcl, lobby, join, PROTOCOL_VERSION );
 	return post;
 }
 
