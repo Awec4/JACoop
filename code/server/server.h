@@ -236,6 +236,7 @@ extern	cvar_t	*sv_showloss;
 extern	cvar_t	*sv_killserver;
 extern	cvar_t	*sv_mapname;
 extern	cvar_t	*sv_hostname;			// D2: LAN co-op browser name
+extern	cvar_t	*sv_password;			// lobby password; empty = open game
 extern	cvar_t	*sv_maxclients;			// E1: connection limit (<= MAX_CLIENTS)
 extern	cvar_t	*sv_spawntarget;
 extern	cvar_t	*sv_mapChecksum;

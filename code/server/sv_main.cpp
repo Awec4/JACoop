@@ -46,6 +46,7 @@ cvar_t	*sv_showloss;			// report when usercmds are lost
 cvar_t	*sv_killserver;			// menu system can set to 1 to shut server down
 cvar_t	*sv_mapname;
 cvar_t	*sv_hostname;			// D2: name shown in the LAN co-op browser
+cvar_t	*sv_password;			// when non-empty, joiners must send a matching "password" userinfo key
 cvar_t	*sv_maxclients;			// E1: how many players may connect (<= MAX_CLIENTS)
 cvar_t	*sv_spawntarget;
 cvar_t	*sv_mapChecksum;
@@ -282,6 +283,8 @@ static void SVC_Info( netadr_t from ) {
 	Info_SetValueForKey( infostring, "clients", va("%i", count) );
 	Info_SetValueForKey( infostring, "sv_maxclients",
 		va("%i", sv_maxclients ? sv_maxclients->integer : MAX_CLIENTS) );
+	Info_SetValueForKey( infostring, "needpass",
+		va("%i", ( sv_password && sv_password->string[0] ) ? 1 : 0) );
 
 	NET_OutOfBandPrint( NS_SERVER, from, "infoResponse\n%s", infostring );
 }

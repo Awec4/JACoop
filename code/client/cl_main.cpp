@@ -1917,6 +1917,11 @@ void CL_Init( void ) {
 	Cvar_Get ("name", "Jaden", CVAR_USERINFO | CVAR_ARCHIVE_ND );
 #endif
 
+	// coop: password a joiner sends when connecting to a sv_password-gated
+	// host (`set password <x>` before /connect). CVAR_USERINFO so it rides
+	// in the connect userinfo. Not archived.
+	Cvar_Get ("password", "", CVAR_USERINFO );
+
 #ifdef JK2_MODE
 	// this is required for savegame compatibility - not ever actually used
 	Cvar_Get ("snaps", "20", CVAR_USERINFO );

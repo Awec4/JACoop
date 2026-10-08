@@ -200,8 +200,9 @@ static statusPost_t *StatusBuildPost( void ) {
 	Com_sprintf( post->body, sizeof( post->body ),
 		"{\"token\":\"%s\",\"hostname\":\"%s\",\"map\":\"%s\","
 		"\"players\":[%s],\"maxplayers\":%i,\"lobby\":%i,\"elapsed\":%i,"
-		"\"join\":\"%s\",\"protocol\":%i}",
-		token, hostname, map, playersJson, maxcl, lobby, elapsed, join, PROTOCOL_VERSION );
+		"\"needpass\":%i,\"join\":\"%s\",\"protocol\":%i}",
+		token, hostname, map, playersJson, maxcl, lobby, elapsed,
+		( sv_password && sv_password->string[0] ) ? 1 : 0, join, PROTOCOL_VERSION );
 	return post;
 }
 

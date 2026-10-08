@@ -480,6 +480,9 @@ void SV_Init (void) {
 	// D2: name shown in the LAN co-op browser. Default to the player's name so a
 	// freshly hosted game is identifiable without any configuration.
 	sv_hostname = Cvar_Get ("sv_hostname", Cvar_VariableString("name"), CVAR_ARCHIVE);
+	// coop: lobby password. Set before hosting; joiners must send the same
+	// value in their connect userinfo (`set password <x>`). Empty = open game.
+	sv_password = Cvar_Get ("sv_password", "", CVAR_ARCHIVE);
 	// E1: how many players may connect. Latched (fixed for the life of a running
 	// server) and clamped to [1, MAX_CLIENTS]; allocations stay MAX_CLIENTS-sized,
 	// only the connection-accept loop is bounded by this. Default 2 (co-op pair);
