@@ -36,6 +36,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 // on first sight (CG_CoopEnsureCharacter in cg_coop.cpp).
 
 #include "g_local.h"
+#include "g_functions.h"
 #include "wp_saber.h"
 
 extern int G_FindConfigstringIndex( const char *name, int start, int max, qboolean create );
@@ -2967,7 +2968,7 @@ void G_CoopSimonCommand( gentity_t *ent )
 		G_CoopPrintTr( ent->s.number, "print", "Simon est deja de sortie.\n", "Simon is already out there.\n" );
 		return;
 	}
-	for ( int i = 0; i < level.num_entities; i++ )
+	for ( int i = 0; i < globals.num_entities; i++ )
 	{
 		gentity_t *e = &g_entities[i];
 		if ( e->inuse && e->NPC && e->health > 0 && e->targetname && !Q_stricmp( e->targetname, "simon" ) )
@@ -3011,7 +3012,7 @@ void G_CoopSimonCommand( gentity_t *ent )
 	NPC_Spawn( spawner, spawner, spawner );
 
 	// Simon himself: Battlegrounds numbers, hostile like the original
-	for ( int i = 0; i < level.num_entities; i++ )
+	for ( int i = 0; i < globals.num_entities; i++ )
 	{
 		gentity_t *e = &g_entities[i];
 		if ( e->inuse && e->NPC && e->targetname && !Q_stricmp( e->targetname, "simon" ) )
@@ -4242,7 +4243,7 @@ static void G_CoopWaveSpawnOne( gentity_t *anchor, const char *npcType, int wave
 	NPC_Spawn( spawner, spawner, spawner );
 
 	// scale HP with the wave number (+15% per wave over 1)
-	for ( int i = level.num_entities - 1; i >= 0; i-- )
+	for ( int i = globals.num_entities - 1; i >= 0; i-- )
 	{
 		gentity_t *e = &g_entities[i];
 		if ( e->inuse && e->NPC && e->health > 0 && e->targetname
@@ -4282,7 +4283,7 @@ void G_CoopWaveFrame( void )
 
 	// wave-mode enemy count (Simon doesn't count — he's his own event)
 	int enemies = 0;
-	for ( int i = 0; i < level.num_entities; i++ )
+	for ( int i = 0; i < globals.num_entities; i++ )
 	{
 		gentity_t *e = &g_entities[i];
 		if ( e->inuse && e->NPC && e->health > 0 && e->client
@@ -4405,7 +4406,7 @@ void G_CoopHolocronSpawn( void )
 	gentity_t *spots[256];
 	int spotCount = 0;
 
-	for ( int i = 0; i < level.num_entities; i++ )
+	for ( int i = 0; i < globals.num_entities; i++ )
 	{
 		gentity_t *e = &g_entities[i];
 		if ( !e->inuse ) continue;

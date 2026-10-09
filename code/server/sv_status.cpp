@@ -58,6 +58,7 @@ static volatile long	statusBusy;	// nonzero while a worker push is in flight
 
 typedef struct statusPost_s statusPost_t;
 static void StatusSendPost( statusPost_t *post );
+static void StatusBuildLive( char *dst, size_t dstSize );
 
 void SV_StatusInit( void ) {
 	sv_statusURL      = Cvar_Get( "sv_statusURL", "https://advjksite.koevetmc.workers.dev/api/coop/ping", CVAR_ARCHIVE );
@@ -440,7 +441,7 @@ static void StatusBuildHolo( char *dst, size_t dstSize ) {
 		}
 		StatusJsonEscape( escName, sizeof( escName ), cl->name );
 		off += Com_sprintf( dst + off, dstSize - off,
-			"%s{"n":"%s"%s}", off ? "," : "", escName, StatusAccountFields( cl ) );
+			"%s{\"n\":\"%s\"%s}", off ? "," : "", escName, StatusAccountFields( cl ) );
 	}
 	dst[dstSize - 1] = 0;
 }

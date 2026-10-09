@@ -793,7 +793,7 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 		// coop: last map's split time (engine stashed it when posting the run)
 		{
 			char split[64];
-			gi.cvar_variableStringBuffer( "sv_coopLastSplit", split, sizeof( split ) );
+			gi.Cvar_VariableStringBuffer( "sv_coopLastSplit", split, sizeof( split ) );
 			if ( split[0] )
 			{
 				char lastMap[32]; int secs = 0;
