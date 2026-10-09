@@ -2189,7 +2189,8 @@ cvar_t	*g_coopSkipCinematics;	// 1 = the host auto-skips every cinematic for eve
 cvar_t	*g_coopCatchup;		// 1 = coop_cometome teleports you beside a living teammate
 cvar_t	*g_coopPickupShare;	// percent of ammo/health/armor pickups shared with nearby teammates
 cvar_t	*g_coopEnemyHealth;	// enemy NPC hit points scale (1.0 = stock)
-cvar_t	*g_coopNGPlus;		// NG+ tier: 0 = normal run, 1+ = harder enemies each cycle
+cvar_t	*g_coopNGPlus;
+cvar_t	*g_coopWaves;		// NG+ tier: 0 = normal run, 1+ = harder enemies each cycle
 cvar_t	*g_mpPhysics;		// 1 = multiplayer movement constants for every player
 cvar_t	*g_coopVersus;		// 1 = players may join TEAM_ENEMY and hunt the Jedi (coop_team)
 
@@ -2214,6 +2215,7 @@ void G_CoopInitDownedCvars( void )
 	g_coopEnemyHealth = gi.cvar( "g_coopEnemyHealth", "1", CVAR_ARCHIVE );
 	// serverinfo: joiners and the site see which NG+ cycle the host is on
 	g_coopNGPlus = gi.cvar( "g_coopNGPlus", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	g_coopWaves = gi.cvar( "g_coopWaves", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	// serverinfo: joiners read the movement rules in CS_COOP_PHYSICS for prediction
 	g_mpPhysics = gi.cvar( "g_mpPhysics", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	// serverinfo: versus sessions show up in server info and the scoreboard
@@ -4162,4 +4164,164 @@ void G_CoopSoundPath( const vec3_t origin, int entityNum, int channel, const cha
 {
 	G_CoopForwardSound( entityNum, channel, -1, path, -1 );
 	cgi_S_StartSound( origin, entityNum, channel, cgi_S_RegisterSound( path ) );
+}
+
+/*
+================
+G_CoopWaveFrame — coop wave mode (g_coopWaves)
+
+When enabled, the map's scripted enemies are left alone; every time no
+TEAM_ENEMY NPCs remain (and a short breather has passed), a bigger wave
+spawns around the players. Wave number goes out through sv_coopWave so
+the engine can ship it with the map-time report for the survival board.
+================
+*/
+static int	coopWaveNum = 0;
+static int	coopWaveCooldown = 0;
+static int	coopWaveNextCheck = 0;
+
+static const char *coopWaveTypes[] = {
+	// tier 0 — waves 1-3
+	"stormtrooper", "imperial", "jawa_armed",
+	// tier 1 — waves 4-7
+	"trandoshan", "weequay", "rodian", "gran",
+	// tier 2 — waves 8-11
+	"cultist", "swamptrooper", "snowtrooper",
+	// tier 3 — waves 12+
+	"reborn", "shadowtrooper", "hazardtrooper", "noghri",
+};
+#define COOP_WAVE_T1 3
+#define COOP_WAVE_T2 7
+#define COOP_WAVE_T3 11
+#define COOP_WAVE_TYPES 14
+
+static void G_CoopWaveSpawnOne( gentity_t *anchor, const char *npcType, int wave )
+{
+	gentity_t *spawner = G_Spawn();
+	if ( !spawner )
+	{
+		return;
+	}
+	spawner->e_ThinkFunc = thinkF_G_FreeEntity;
+	spawner->nextthink = level.time + FRAMETIME;
+
+	// ring around a random player: random bearing, 350-700 units out,
+	// dropped to the floor
+	vec3_t	end, fwd;
+	trace_t	tr;
+	float	ang = (float)( rand() % 360 ) * M_PI / 180.0f;
+	float	dist = 350.0f + (float)( rand() % 350 );
+	fwd[0] = cosf( ang ); fwd[1] = sinf( ang ); fwd[2] = 0;
+	VectorMA( anchor->currentOrigin, dist, fwd, end );
+	end[2] = anchor->currentOrigin[2] + 64;
+	VectorCopy( end, tr.endpos );
+	gi.trace( &tr, end, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	end[2] -= 512;
+	gi.trace( &tr, tr.endpos, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	if ( tr.fraction == 1.0f )
+	{
+		// no floor found — fall back to beside the anchor
+		VectorCopy( anchor->currentOrigin, tr.endpos );
+		tr.endpos[2] += 8;
+	}
+	VectorCopy( tr.endpos, end );
+	end[2] += 24;
+	G_SetOrigin( spawner, end );
+	VectorCopy( spawner->currentOrigin, spawner->s.origin );
+	spawner->s.angles[1] = ang * 180.0f / M_PI + 180.0f; // face the players
+	gi.linkentity( spawner );
+
+	spawner->NPC_type = G_NewString( npcType );
+	spawner->NPC_targetname = G_NewString( "wave" );
+	spawner->count = 1;
+	spawner->delay = 0;
+	spawner->wait = 500;
+	NPC_Spawn( spawner, spawner, spawner );
+
+	// scale HP with the wave number (+15% per wave over 1)
+	for ( int i = level.num_entities - 1; i >= 0; i-- )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->health > 0 && e->targetname
+			&& !Q_stricmp( e->targetname, "wave" ) && e->max_health > 0
+			&& e->health == e->max_health )
+		{
+			int hp = (int)( e->max_health * ( 1.0f + 0.15f * ( wave - 1 ) ) );
+			e->health = hp;
+			e->max_health = hp;
+			if ( e->client )
+			{
+				e->client->ps.stats[STAT_HEALTH] = hp;
+				e->client->ps.stats[STAT_MAX_HEALTH] = hp;
+			}
+			break;
+		}
+	}
+}
+
+void G_CoopWaveFrame( void )
+{
+	extern cvar_t *g_coopWaves;
+	if ( !g_coopWaves || !g_coopWaves->integer )
+	{
+		if ( coopWaveNum > 0 )
+		{
+			coopWaveNum = 0;
+			gi.cvar_set( "sv_coopWave", "0" );
+		}
+		return;
+	}
+	if ( level.time < coopWaveNextCheck )
+	{
+		return;
+	}
+	coopWaveNextCheck = level.time + 1000;
+
+	// wave-mode enemy count (Simon doesn't count — he's his own event)
+	int enemies = 0;
+	for ( int i = 0; i < level.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->health > 0 && e->client
+			&& e->client->playerTeam == TEAM_ENEMY
+			&& ( !e->targetname || Q_stricmp( e->targetname, "simon" ) ) )
+		{
+			enemies++;
+		}
+	}
+	if ( enemies > 0 || level.time < coopWaveCooldown )
+	{
+		return;
+	}
+
+	// next wave
+	coopWaveNum++;
+	int wave = coopWaveNum;
+	gi.cvar_set( "sv_coopWave", va( "%i", wave ) );
+	coopWaveCooldown = level.time + 8000; // 8s breather between waves
+	G_CoopPrintTr( -1, "cp", "VAGUE @%i", "WAVE @%i", wave );
+
+	int count = 2 + wave; // wave 1 = 3, wave 5 = 7, caps at 15
+	if ( count > 15 ) count = 15;
+
+	// roster tier by wave
+	int lo = 0, hi = COOP_WAVE_T1;
+	if ( wave >= 8 && wave < 12 )      { lo = COOP_WAVE_T1; hi = COOP_WAVE_T2; }
+	else if ( wave >= 12 )             { lo = COOP_WAVE_T2; hi = COOP_WAVE_TYPES; }
+	else if ( wave >= 4 )              { lo = 0; hi = COOP_WAVE_T2; }
+
+	for ( int i = 0; i < count; i++ )
+	{
+		// anchor on a random living player
+		gentity_t *anchor = G_CoopPlayerSlot( rand() % MAX_CLIENTS );
+		if ( !anchor || !anchor->client )
+		{
+			anchor = G_CoopPlayerSlot( 0 );
+		}
+		if ( !anchor || !anchor->client )
+		{
+			break;
+		}
+		G_CoopWaveSpawnOne( anchor, coopWaveTypes[ lo + rand() % ( hi - lo ) ], wave );
+	}
 }
