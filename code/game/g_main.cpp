@@ -863,6 +863,8 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 	// general initialization
 	G_FindTeams();
 
+	G_CoopHolocronSpawn();	// coop: scatter holocron pickups when g_coopHolocrons > 0
+
 //	SaveRegisteredItems();
 
 	gi.Printf ("-----------------------------------\n");

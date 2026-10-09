@@ -2190,7 +2190,8 @@ cvar_t	*g_coopCatchup;		// 1 = coop_cometome teleports you beside a living teamm
 cvar_t	*g_coopPickupShare;	// percent of ammo/health/armor pickups shared with nearby teammates
 cvar_t	*g_coopEnemyHealth;	// enemy NPC hit points scale (1.0 = stock)
 cvar_t	*g_coopNGPlus;
-cvar_t	*g_coopWaves;		// NG+ tier: 0 = normal run, 1+ = harder enemies each cycle
+cvar_t	*g_coopWaves;		// wave mode: 0 = off, 1 = endless enemy waves
+cvar_t	*g_coopHolocrons;	// scattered holocron pickups per map (0 = off)
 cvar_t	*g_mpPhysics;		// 1 = multiplayer movement constants for every player
 cvar_t	*g_coopVersus;		// 1 = players may join TEAM_ENEMY and hunt the Jedi (coop_team)
 
@@ -2216,6 +2217,8 @@ void G_CoopInitDownedCvars( void )
 	// serverinfo: joiners and the site see which NG+ cycle the host is on
 	g_coopNGPlus = gi.cvar( "g_coopNGPlus", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	g_coopWaves = gi.cvar( "g_coopWaves", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	// serverinfo: joiners see how many holocrons the host scattered on the map
+	g_coopHolocrons = gi.cvar( "g_coopHolocrons", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	// serverinfo: joiners read the movement rules in CS_COOP_PHYSICS for prediction
 	g_mpPhysics = gi.cvar( "g_mpPhysics", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
 	// serverinfo: versus sessions show up in server info and the scoreboard
@@ -4323,5 +4326,106 @@ void G_CoopWaveFrame( void )
 			break;
 		}
 		G_CoopWaveSpawnOne( anchor, coopWaveTypes[ lo + rand() % ( hi - lo ) ], wave );
+	}
+}
+
+/*
+==============================================================================
+Holocron scatter (g_coopHolocrons)
+
+Port of the AdvancedJK multiplayer holocron auto-spawn: when the host sets
+g_coopHolocrons N the game scatters N force holocrons at random item/player
+spawn points on every map, so co-op runs have loot to hunt. Holocrons the map
+already places count toward N, so handcrafted maps stay handcrafted.
+==============================================================================
+*/
+static const char *coopHoloTypes[] = {
+	"holocron_force_heal",
+	"holocron_force_levitation",
+	"holocron_force_speed",
+	"holocron_force_push",
+	"holocron_force_pull",
+	"holocron_force_telepathy",
+	"holocron_force_grip",
+	"holocron_force_lightining",	// the engine's original classname typo
+	"holocron_force_saberthrow",
+};
+#define COOP_HOLO_TYPES	(sizeof(coopHoloTypes)/sizeof(coopHoloTypes[0]))
+
+void G_CoopHolocronSpawn( void )
+{
+	extern cvar_t *g_coopHolocrons;
+	extern qboolean G_CallSpawn( gentity_t *ent );
+	int want = g_coopHolocrons ? g_coopHolocrons->integer : 0;
+	if ( want <= 0 )
+	{
+		return;
+	}
+	if ( want > 32 ) want = 32;
+
+	int placed = 0;
+	gentity_t *spots[256];
+	int spotCount = 0;
+
+	for ( int i = 0; i < level.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( !e->inuse ) continue;
+		if ( e->classname && !Q_stricmpn( e->classname, "holocron_", 9 ) )
+		{
+			placed++;
+			continue;
+		}
+		if ( e->item && spotCount < 256 )
+		{
+			spots[spotCount++] = e;
+		}
+	}
+
+	want -= placed;
+	if ( want <= 0 ) return;
+
+	if ( spotCount == 0 )
+	{ // fallback: player spawn points
+		gentity_t *spot = NULL;
+		while ( ( spot = G_Find( spot, FOFS(classname), "info_player_deathmatch" ) ) != NULL && spotCount < 256 )
+		{
+			spots[spotCount++] = spot;
+		}
+	}
+	if ( spotCount == 0 )
+	{
+		gi.Printf( "Holocron: no spawn points found.\n" );
+		return;
+	}
+
+	int spawned = 0;
+	for ( int n = 0; n < want; n++ )
+	{
+		gentity_t *holo = G_Spawn();
+		if ( !holo ) break;
+
+		holo->classname = G_NewString( coopHoloTypes[ Q_irand( 0, (int)COOP_HOLO_TYPES - 1 ) ] );
+
+		// force level granted — mostly 1-2, the odd full level 3
+		int roll = Q_irand( 1, 10 );
+		holo->count = ( roll <= 5 ) ? 1 : ( roll <= 8 ) ? 2 : 3;
+
+		gentity_t *spot = spots[ Q_irand( 0, spotCount - 1 ) ];
+		VectorCopy( spot->currentOrigin, holo->s.origin );
+		holo->s.origin[2] += 16;
+		VectorCopy( holo->s.origin, holo->currentOrigin );
+
+		if ( !G_CallSpawn( holo ) )
+		{
+			G_FreeEntity( holo );
+			continue;
+		}
+		spawned++;
+	}
+	if ( spawned )
+	{
+		gi.Printf( "Holocron: scattered %i holocrons over %i spawn points.\n", spawned, spotCount );
+		G_CoopPrintTr( -1, "print", "%i holocrons caches sur cette carte...\n", "%i holocrons hidden on this map...\n", spawned );
 	}
 }

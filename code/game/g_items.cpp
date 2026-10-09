@@ -662,6 +662,9 @@ int Pickup_Holocron( gentity_t *ent, gentity_t *other )
 	other->client->ps.forcePowerLevel[forcePower] = forceLevel;
 	other->client->ps.forcePowersKnown |= ( 1 << forcePower );
 
+	// coop: tell the lobby who found it
+	G_CoopPrintTr( -1, "print", "%s ^3a trouve un holocron !\n", "%s ^3found a holocron!\n", other->client->pers.netname );
+
 	missionInfo_Updated = qtrue;	// Activate flashing text
 	gi.cvar_set("cg_updatedDataPadForcePower1", va("%d",forcePower+1)); // The +1 is offset in the print routine.
 	cg_updatedDataPadForcePower1.integer = forcePower+1;
