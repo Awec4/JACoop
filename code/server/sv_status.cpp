@@ -245,7 +245,7 @@ self-contained request the worker can send without touching engine state.
 */
 static statusPost_t *StatusBuildPost( void ) {
 	char	token[256], hostname[128], map[128], join[256];
-	char	playersJson[1600];
+	char	playersJson[1600], liveJson[1400];
 	int		maxcl, lobby, elapsed = 0;
 	statusPost_t	*post;
 
@@ -255,6 +255,7 @@ static statusPost_t *StatusBuildPost( void ) {
 	StatusJsonEscape( join, sizeof( join ), sv_statusJoin->string );
 
 	StatusBuildRoster( playersJson, sizeof( playersJson ), qfalse );
+	StatusBuildLive( liveJson, sizeof( liveJson ) );
 	if ( statusMapStart > 0 ) {
 		elapsed = ( Sys_Milliseconds() - statusMapStart ) / 1000;
 	}
@@ -270,10 +271,49 @@ static statusPost_t *StatusBuildPost( void ) {
 	Com_sprintf( post->body, sizeof( post->body ),
 		"{\"token\":\"%s\",\"hostname\":\"%s\",\"map\":\"%s\","
 		"\"players\":[%s],\"maxplayers\":%i,\"lobby\":%i,\"elapsed\":%i,"
-		"\"needpass\":%i,\"join\":\"%s\",\"protocol\":%i}",
+		"\"needpass\":%i,\"join\":\"%s\",\"protocol\":%i,\"live\":[%s]}",
 		token, hostname, map, playersJson, maxcl, lobby, elapsed,
-		( sv_password && sv_password->string[0] ) ? 1 : 0, join, PROTOCOL_VERSION );
+		( sv_password && sv_password->string[0] ) ? 1 : 0, join, PROTOCOL_VERSION, liveJson );
 	return post;
+}
+
+/*
+================
+StatusBuildLive
+
+The game's sv_coopLive cvar ("cn|x,y;cn|x,y") — freshest opt-in player
+positions — becomes "live":[{"n":"name","x":N,"y":N}]" for the
+site's live map tracker.
+================
+*/
+static void StatusBuildLive( char *dst, size_t dstSize ) {
+	char	tally[700], *tok;
+	int		off = 0;
+
+	dst[0] = 0;
+	if ( !svs.clients ) {
+		return;
+	}
+	Q_strncpyz( tally, Cvar_VariableString( "sv_coopLive" ), sizeof( tally ) );
+	for ( tok = strtok( tally, ";" ); tok && off < (int)dstSize - 256;
+		tok = strtok( NULL, ";" ) ) {
+		int	cn, x, y;
+		char	escName[MAX_NAME_LENGTH * 2];
+		client_t *cl;
+
+		if ( sscanf( tok, "%d|%d,%d", &cn, &x, &y ) != 3 ||
+			cn < 0 || cn >= MAX_CLIENTS ) {
+			continue;
+		}
+		cl = &svs.clients[cn];
+		if ( !cl->name[0] ) {
+			continue;
+		}
+		StatusJsonEscape( escName, sizeof( escName ), cl->name );
+		off += Com_sprintf( dst + off, dstSize - off,
+			"%s{\"n\":\"%s\",\"x\":%i,\"y\":%i%s}",
+			off ? "," : "", escName, x, y, StatusAccountFields( cl ) );
+	}
 }
 
 /*

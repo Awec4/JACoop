@@ -2610,5 +2610,29 @@ void G_CoopTrailFrame( void ) {
 	if ( level.time >= nextFlush ) {
 		nextFlush = level.time + 400;
 		G_CoopTrailFlush();
+
+		// coop: live positions for the site's map tracker — same opt-in rule:
+		// "cn|x,y;cn|x,y" with each player's freshest sample
+		{
+			char live[640]; int loff = 0;
+			live[0] = 0;
+			for ( i = 0; i < MAX_CLIENTS; i++ ) {
+				gentity_t	*ent = &g_entities[i];
+				char		ui[MAX_INFO_STRING];
+				if ( !G_CoopIsPlayer( ent ) ) {
+					continue;
+				}
+				gi.GetUserinfo( i, ui, sizeof( ui ) );
+				if ( !atoi( Info_ValueForKey( ui, "advjk_trail" ) ) ) {
+					continue;
+				}
+				if ( loff < (int)sizeof( live ) - 40 ) {
+					loff += Com_sprintf( live + loff, sizeof( live ) - loff,
+						"%s%d|%d,%d", loff ? ";" : "", i,
+						(int)ent->currentOrigin[0], (int)ent->currentOrigin[1] );
+				}
+			}
+			gi.cvar_set( "sv_coopLive", live );
+		}
 	}
 }
