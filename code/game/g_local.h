@@ -447,6 +447,7 @@ void	G_CoopPrintScorecard( void );	// coop: end-of-map chat recap before maptran
 void	G_CoopSimonCommand( gentity_t *ent );	// coop: simonsays — Galactic Battlegrounds cheat
 void	G_CoopWaveFrame( void );				// coop: endless wave mode (g_coopWaves)
 void	G_CoopHolocronSpawn( void );			// coop: scatter holocrons (g_coopHolocrons)
+void	G_CoopHoloPicked( int cn );				// coop: holocron pickup -> set-completion reward
 void	G_CoopSharePickup( const gentity_t *item, gentity_t *toucher );	// coop: g_coopPickupShare
 qboolean G_CoopAnyPlayerUp( void );
 void G_CoopReviveCancel( gentity_t *reviver );

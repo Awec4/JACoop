@@ -4339,6 +4339,43 @@ spawn points on every map, so co-op runs have loot to hunt. Holocrons the map
 already places count toward N, so handcrafted maps stay handcrafted.
 ==============================================================================
 */
+static int		coopHoloTotal = 0;			// holocrons on the current map
+static int		coopHoloFound[MAX_CLIENTS];	// pickups per player slot
+static char		coopHoloDoneList[64];		// "cn;cn;" slots that completed the set
+
+/*
+==============
+G_CoopHoloPicked
+
+A player just grabbed a holocron. Track the set — collecting every holocron
+on the map earns that player a free site holocron (reported in the run post).
+==============
+*/
+void G_CoopHoloPicked( int cn )
+{
+	if ( coopHoloTotal <= 0 || cn < 0 || cn >= MAX_CLIENTS )
+	{
+		return;
+	}
+	if ( ++coopHoloFound[cn] < coopHoloTotal )
+	{
+		return;
+	}
+	if ( strstr( coopHoloDoneList, va( "%i;", cn ) ) )
+	{
+		return;
+	}
+	gentity_t *p = G_CoopPlayerSlot( cn );
+	if ( p )
+	{
+		G_CoopPrintTr( -1, "print", "%s ^2a collecte tous les holocrons !\n",
+			"%s ^2collected every holocron — site holocron unlocked!\n", p->client->pers.netname );
+	}
+	// engine relays the completer list to the site with the run report
+	Q_strcat( coopHoloDoneList, sizeof( coopHoloDoneList ), va( "%i;", cn ) );
+	gi.cvar_set( "sv_coopHolo", coopHoloDoneList );
+}
+
 static const char *coopHoloTypes[] = {
 	"holocron_force_heal",
 	"holocron_force_levitation",
@@ -4356,11 +4393,12 @@ void G_CoopHolocronSpawn( void )
 {
 	extern cvar_t *g_coopHolocrons;
 	extern qboolean G_CallSpawn( gentity_t *ent );
+
+	memset( coopHoloFound, 0, sizeof( coopHoloFound ) );
+	coopHoloDoneList[0] = 0;
+	gi.cvar_set( "sv_coopHolo", "" );
+
 	int want = g_coopHolocrons ? g_coopHolocrons->integer : 0;
-	if ( want <= 0 )
-	{
-		return;
-	}
 	if ( want > 32 ) want = 32;
 
 	int placed = 0;
@@ -4382,6 +4420,7 @@ void G_CoopHolocronSpawn( void )
 		}
 	}
 
+	coopHoloTotal = placed;
 	want -= placed;
 	if ( want <= 0 ) return;
 
@@ -4423,6 +4462,7 @@ void G_CoopHolocronSpawn( void )
 		}
 		spawned++;
 	}
+	coopHoloTotal += spawned;
 	if ( spawned )
 	{
 		gi.Printf( "Holocron: scattered %i holocrons over %i spawn points.\n", spawned, spotCount );

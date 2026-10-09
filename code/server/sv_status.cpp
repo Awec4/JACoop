@@ -74,6 +74,7 @@ void SV_StatusInit( void ) {
 	// Per-slot downed/revive/death tallies the game keeps live
 	// ("cn,d,r,dd;..."). StatusPostMapTime ships it with the completed map.
 	Cvar_Get( "sv_coopTeam", "", CVAR_TEMP );
+	Cvar_Get( "sv_coopHolo", "", CVAR_TEMP );
 	// game -> engine trail channel: "cn|x,y,z,x,y,z;cn|x,y,z" flushed by
 	// the game as opt-in players move; StatusCheckTrail accumulates it.
 	Cvar_Get( "sv_coopTrail", "", CVAR_TEMP );
@@ -408,8 +409,44 @@ static void StatusBuildTeam( char *dst, size_t dstSize ) {
 	dst[dstSize - 1] = 0;
 }
 
+/*
+===================
+StatusBuildHolo
+===================
+Turns the game's sv_coopHolo completer list ("cn;cn") into holos JSON rows.
+===================
+*/
+static void StatusBuildHolo( char *dst, size_t dstSize ) {
+	char	tally[256], *tok;
+	int		off = 0;
+
+	dst[0] = 0;
+	if ( !svs.clients ) {
+		return;
+	}
+	Q_strncpyz( tally, Cvar_VariableString( "sv_coopHolo" ), sizeof( tally ) );
+	for ( tok = strtok( tally, ";" ); tok && off < (int)dstSize - 256;
+		tok = strtok( NULL, ";" ) ) {
+		int		cn;
+		char	escName[MAX_NAME_LENGTH * 2];
+		client_t *cl;
+
+		if ( sscanf( tok, "%d", &cn ) != 1 || cn < 0 || cn >= MAX_CLIENTS ) {
+			continue;
+		}
+		cl = &svs.clients[cn];
+		if ( !cl->name[0] ) {
+			continue;
+		}
+		StatusJsonEscape( escName, sizeof( escName ), cl->name );
+		off += Com_sprintf( dst + off, dstSize - off,
+			"%s{"n":"%s"%s}", off ? "," : "", escName, StatusAccountFields( cl ) );
+	}
+	dst[dstSize - 1] = 0;
+}
+
 static void StatusPostMapTime( const char *mapname, int seconds ) {
-	char	hostname[128], map[128], playersJson[1600], killsJson[2400], teamJson[1400], fields[4096];
+	char	hostname[128], map[128], playersJson[1600], killsJson[2400], teamJson[1400], holoJson[800], fields[4096];
 
 	if ( seconds < 10 ) {
 		return;		// map hops shorter than this are console/dev hops, not runs
@@ -420,12 +457,13 @@ static void StatusPostMapTime( const char *mapname, int seconds ) {
 	StatusBuildRoster( playersJson, sizeof( playersJson ), qtrue );
 	StatusBuildKills( killsJson, sizeof( killsJson ) );
 	StatusBuildTeam( teamJson, sizeof( teamJson ) );
+	StatusBuildHolo( holoJson, sizeof( holoJson ) );
 
 	Com_sprintf( fields, sizeof( fields ),
-		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"ng\":%i,\"cheats\":%i,\"skill\":%i,\"wave\":%i,\"players\":[%s],\"kills\":[%s],\"team\":[%s]",
+		"\"map\":\"%s\",\"seconds\":%i,\"hostname\":\"%s\",\"ng\":%i,\"cheats\":%i,\"skill\":%i,\"wave\":%i,\"players\":[%s],\"kills\":[%s],\"team\":[%s],\"holos\":[%s]",
 		map, seconds, hostname, Cvar_VariableIntegerValue( "g_coopNGPlus" ),
 		Cvar_VariableIntegerValue( "helpUsObi" ), Cvar_VariableIntegerValue( "g_spskill" ), Cvar_VariableIntegerValue( "sv_coopWave" ),
-		playersJson, killsJson, teamJson );
+		playersJson, killsJson, teamJson, holoJson );
 
 	// the next map announces this split in chat (game reads + clears the cvar)
 	Cvar_Set( "sv_coopLastSplit", va( "%s,%i", mapname, seconds ) );
