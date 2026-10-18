@@ -425,9 +425,14 @@ void WP_SaberAddG2SaberModels( gentity_t *ent, int specificSaberNum )
 	{
 		if ( ent->weaponModel[saberNum] > 0 )
 		{//we already have a weapon model in this slot
-			//remove it
-			gi.G2API_SetSkin( &ent->ghoul2[ent->weaponModel[saberNum]], -1, 0 );
-			gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[saberNum] );
+			//remove it. A slot already cleared (weapon switch) must not be removed
+			// again: G2API_RemoveGhoul2Model asserts, and the index would stay.
+			if ( ent->weaponModel[saberNum] < ent->ghoul2.size()
+				&& ent->ghoul2[ent->weaponModel[saberNum]].mModelindex >= 0 )
+			{
+				gi.G2API_SetSkin( &ent->ghoul2[ent->weaponModel[saberNum]], -1, 0 );
+				gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[saberNum] );
+			}
 			ent->weaponModel[saberNum] = -1;
 		}
 		if ( saberNum > 0 )
@@ -460,7 +465,12 @@ void WP_SaberAddG2SaberModels( gentity_t *ent, int specificSaberNum )
 		}
 		G_CreateG2AttachedWeaponModel( ent, ent->client->ps.saber[saberNum].model, handBolt, saberNum );
 
-		if ( ent->client->ps.saber[saberNum].skin != NULL )
+		// coop: attach can fail (bolt not ready, empty model). Never index ghoul2[-1]
+		// for the skin — that was corrupting the heap and crashing in ucrtbase when
+		// G_CoopSaberWatch retried a dead hilt every frame (solo host included).
+		if ( ent->weaponModel[saberNum] > 0
+			&& ent->weaponModel[saberNum] < ent->ghoul2.size()
+			&& ent->client->ps.saber[saberNum].skin != NULL )
 		{//if this saber has a customSkin, use it
 			// lets see if it's out there
 			int saberSkin = gi.RE_RegisterSkin( ent->client->ps.saber[saberNum].skin );

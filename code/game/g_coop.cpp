@@ -36,6 +36,7 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 // on first sight (CG_CoopEnsureCharacter in cg_coop.cpp).
 
 #include "g_local.h"
+#include "g_functions.h"
 #include "wp_saber.h"
 
 extern int G_FindConfigstringIndex( const char *name, int start, int max, qboolean create );
@@ -315,6 +316,10 @@ void G_CoopUpdateAppearance( gentity_t *ent )
 		{
 			f |= COOPF_PUSH_RHAND;
 		}
+		if ( ent->client->dualPistols )
+		{
+			f |= COOPF_DUAL_PISTOLS;
+		}
 		ent->s.coopForce = f;
 		// victim electrocution: the wire bit sticks on corpses, the timer decides
 		ent->s.coopShockTime = ps->powerups[PW_SHOCKED];
@@ -568,6 +573,10 @@ qboolean G_CoopAnyPlayerAlive( void )
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
 		const gentity_t *ent = &g_entities[i];
+		if ( G_CoopIsVersusEnemy( ent ) )
+		{
+			continue;	// versus: living hunters don't keep the mission alive
+		}
 		if ( ent->inuse && ent->client && ent->client->pers.connected == CON_CONNECTED && ent->health > 0 )
 		{
 			return qtrue;
@@ -606,7 +615,16 @@ qboolean G_CoopIsUp( const gentity_t *ent );	// defined with the downed/revive c
 static void G_CoopAfterRespawn( gentity_t *ent );	// defined with the camera code below
 
 static int				coopRespawnTime[MAX_CLIENTS];
+static int				coopRespawnAtSpawn[MAX_CLIENTS];	// USE held while dead: checkpoint instead of beside a mate
 static playerState_t	coopDeathState[MAX_CLIENTS];	// loadout snapshot taken at death
+
+// co-op scoreboard counters (kills ride along on PERS_ENEMIES_KILLED); reset
+// each map with the rest of the co-op state
+static int	coopStatDowns[MAX_CLIENTS];
+static int	coopStatRevives[MAX_CLIENTS];
+static int	coopStatDeaths[MAX_CLIENTS];
+
+static void G_CoopSendStats( int toSlot );
 
 // true while this player is dead and waiting for a co-op respawn
 qboolean G_CoopRespawnPending( const gentity_t *ent )
@@ -618,11 +636,13 @@ gentity_t *G_CoopLivingTeammate( const gentity_t *self )
 {
 	gentity_t	*best = NULL;
 	float		bestDist = -1;
+	const team_t	mySide = G_CoopSideOf( self );	// versus: only respawn beside your own side
 
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
 		gentity_t *ent = &g_entities[i];
-		if ( ent == self || !G_CoopIsUp( ent ) )
+		if ( ent == self || !G_CoopIsUp( ent )
+			|| ( G_CoopVersusOn() && G_CoopSideOf( ent ) != mySide ) )
 		{
 			continue;
 		}
@@ -739,7 +759,7 @@ qboolean G_CoopPlayerDied( gentity_t *self )
 		return qfalse;
 	}
 	G_CoopClearDowned( self );
-	if ( G_CoopNumPlayers() < 2 )
+if ( G_CoopNumPlayers() < 2 && !G_CoopIsVersusEnemy( self ) )
 	{
 		return qfalse;	// solo: the stock single-player "You have died" screen
 	}
@@ -768,6 +788,8 @@ qboolean G_CoopPlayerDied( gentity_t *self )
 	{	// nobody is up: the all-down screen says what happens next
 		G_CoopPrintTr( -1, "print", "%s ^3est tombe.\n", "%s ^3fell.\n", self->client->pers.netname );
 	}
+	coopStatDeaths[self->s.number]++;	// coop: scoreboard
+	G_CoopBroadcastStats();
 	return qtrue;
 }
 
@@ -949,6 +971,58 @@ void G_CoopPlaceBeside( gentity_t *ent, gentity_t *mate )
 	{
 		G_CoopPlaceEndPass();
 	}
+}
+
+// versus: a hunter respawns beside an enemy NPC near the jedi front instead of
+// trekking in from the map start - L4D2 director style. qfalse = nobody to
+// stand next to, keep whatever spawnpoint ClientSpawn picked.
+static qboolean G_CoopVersusPlace( gentity_t *ent )
+{
+	vec3_t	front;
+	qboolean haveFront = qfalse;
+	float	frontDist = -1;
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		gentity_t *jedi = &g_entities[i];
+		if ( !G_CoopIsUp( jedi ) || G_CoopIsVersusEnemy( jedi ) )
+		{
+			continue;
+		}
+		const float dist = DistanceSquared( ent->currentOrigin, jedi->currentOrigin );
+		if ( !haveFront || dist < frontDist )
+		{	// the standing jedi nearest where the hunter fell is the front
+			VectorCopy( jedi->currentOrigin, front );
+			frontDist = dist;
+			haveFront = qtrue;
+		}
+	}
+	if ( !haveFront )
+	{
+		VectorCopy( ent->currentOrigin, front );	// nobody standing: gather near the corpse
+	}
+
+	gentity_t	*best = NULL;
+	float		bestDist = -1;
+	for ( int i = MAX_CLIENTS; i < globals.num_entities; i++ )
+	{
+		gentity_t *npc = &g_entities[i];
+		if ( !npc->inuse || !npc->client || npc->health <= 0 || npc->client->playerTeam != TEAM_ENEMY )
+		{
+			continue;
+		}
+		const float dist = DistanceSquared( npc->currentOrigin, front );
+		if ( bestDist < 0 || dist < bestDist )
+		{
+			bestDist = dist;
+			best = npc;
+		}
+	}
+	if ( !best )
+	{
+		return qfalse;
+	}
+	G_CoopPlaceBeside( ent, best );
+	return qtrue;
 }
 
 /*
@@ -1212,6 +1286,10 @@ void G_CoopFollowHostTeleport( const vec3_t from )
 		{
 			continue;	// (a downed joiner keeps health 1 and follows: it stays revivable beside the host)
 		}
+		if ( G_CoopIsVersusEnemy( ent ) )
+		{
+			continue;	// versus: hunters don't follow the jedi's script teleports
+		}
 		if ( ent->client->ps.eFlags & EF_LOCKED_TO_WEAPON )
 		{
 			continue;
@@ -1236,8 +1314,9 @@ void G_CoopFollowHostTeleport( const vec3_t from )
 // locked a door with the joiner on the far side).
 void G_CoopTeleportCommand( gentity_t *ent )
 {
-	if ( !ent || !ent->client || ent->s.number >= MAX_CLIENTS || ent->health <= 0 || G_CoopIsDowned( ent ) )
-	{
+	if ( !ent || !ent->client || ent->s.number >= MAX_CLIENTS || ent->health <= 0 || G_CoopIsDowned( ent )
+		|| G_CoopIsVersusEnemy( ent ) )
+	{	// versus hunters hunt on foot - no teleporting onto the jedi
 		return;
 	}
 	gentity_t *target = NULL;
@@ -1314,7 +1393,8 @@ static void G_CoopRespawn( gentity_t *ent )
 
 	// coop: breadcrumb - a respawn walks ClientSpawn over a client that may still be
 	// inside a mover, so the log must say it happened before anything else goes wrong
-	G_CoopNote( va( "respawning %s beside %s", G_CoopEntName( ent ), G_CoopEntName( mate ) ) );
+	G_CoopNote( va( "respawning %s %s", G_CoopEntName( ent ),
+		coopRespawnAtSpawn[slot] ? "at the checkpoint (USE held)" : va( "beside %s", G_CoopEntName( mate ) ) ) );
 
 	ClientSpawn( ent, eNO );
 	G_CoopReleaseHeld( ent );	// coop: ClientSpawn ne touche pas a eFlags
@@ -1342,8 +1422,22 @@ static void G_CoopRespawn( gentity_t *ent )
 		G_AddWeaponModels( ent );
 	}
 
-	// come back beside a living teammate rather than at the map start
-	G_CoopPlaceBeside( ent, mate );
+	// come back beside a living teammate rather than at the map start -
+	// unless the player held USE while dead: plain checkpoint spawn then
+	// (the group may be standing in the fight that killed him)
+	if ( G_CoopIsVersusEnemy( ent ) )
+	{
+		G_CoopVersusPlace( ent );	// hunter: materialize next to the NPCs near the front
+	}
+	else if ( coopRespawnAtSpawn[slot] )
+	{
+		G_CoopNote( va( "respawning %s at the checkpoint (USE held)", G_CoopEntName( ent ) ) );
+	}
+	else
+	{
+		G_CoopPlaceBeside( ent, mate );
+	}
+	coopRespawnAtSpawn[slot] = 0;
 	ent->health = ps->stats[STAT_HEALTH] = ps->stats[STAT_MAX_HEALTH];
 	G_CoopReEquip( ent );	// coop: never come back empty-handed
 	G_CoopAfterRespawn( ent );
@@ -1362,6 +1456,19 @@ hand, the saber is gone") that two local instances did not reproduce.
 */
 static int	coopSaberSeen[MAX_CLIENTS];		// bit 0 in inventory, bit 1 has a definition, bit 2 hilt drawn in hand
 static int	coopSaberHandSince[MAX_CLIENTS];
+// coop: last hilt reattach attempt (level.time). Never hammer Ghoul2 every frame —
+// failed attach + skin write used to corrupt memory and crash solo hosts in ucrtbase.
+static int	coopHiltRetryAt[MAX_CLIENTS];
+
+// the ghoul2 slot is still a model, not a hole left by G2API_RemoveGhoul2Model
+static qboolean G_CoopHiltLive( const gentity_t *ent, int slot )
+{
+	if ( !ent || slot < 0 || slot >= ent->ghoul2.size() )
+	{
+		return qfalse;
+	}
+	return (qboolean)( ent->ghoul2[slot].mModelindex >= 0 );
+}
 
 void G_CoopSaberWatch( void )
 {
@@ -1375,10 +1482,37 @@ void G_CoopSaberWatch( void )
 		{
 			coopSaberSeen[i] = 0;
 			coopSaberHandSince[i] = 0;
+			coopHiltRetryAt[i] = 0;
 			continue;
 		}
 		playerState_t	*ps = &p->client->ps;
 		int				now = 0;
+
+		// coop: switching weapons removes the hilt and puts it back at the end of
+		// the holster. If that second step misses (no model string, bolt not ready),
+		// the saber stays gone while STAT_WEAPONS still has it. Put the hilt back.
+		// Solo hosts hit this path too — retry at most every 250ms, and only when
+		// the hand bolt exists so WP_SaberAddG2SaberModels can succeed.
+		if ( ( ps->stats[STAT_WEAPONS] & ( 1 << WP_SABER ) ) && ps->weapon == WP_SABER && !ps->saberInFlight
+			&& !G_CoopHiltLive( p, p->weaponModel[0] ) )
+		{
+			if ( p->handRBolt >= 0 && level.time >= coopHiltRetryAt[i] )
+			{
+				coopHiltRetryAt[i] = level.time + 250;
+				if ( ( !ps->saber[0].model || !ps->saber[0].model[0] ) && ps->saber[0].name && ps->saber[0].name[0] )
+				{
+					WP_SaberParseParms( ps->saber[0].name, &ps->saber[0], qfalse );
+				}
+				if ( ps->saber[0].model && ps->saber[0].model[0] )
+				{
+					WP_SaberAddG2SaberModels( p );
+				}
+			}
+		}
+		else
+		{
+			coopHiltRetryAt[i] = 0;
+		}
 
 		if ( ps->stats[STAT_WEAPONS] & ( 1 << WP_SABER ) )
 		{
@@ -1469,6 +1603,7 @@ void G_CoopRespawnPendingNow( void )
 			continue;
 		}
 		coopRespawnTime[slot] = 0;
+		coopRespawnAtSpawn[slot] = 0;
 		gentity_t *ent = &g_entities[slot];
 		if ( ent->inuse && ent->client && ent->client->pers.connected == CON_CONNECTED && ent->health <= 0 )
 		{
@@ -1914,6 +2049,7 @@ void G_CoopResetCamera( void )
 	VectorClear( coopCameraHostOrigin );
 	memset( coopMissionFailedSent, 0, sizeof( coopMissionFailedSent ) );
 	memset( coopRespawnTime, 0, sizeof( coopRespawnTime ) );
+	memset( coopRespawnAtSpawn, 0, sizeof( coopRespawnAtSpawn ) );
 	G_CoopResetDowned();
 }
 
@@ -1983,6 +2119,15 @@ void G_CoopClientBegin( const gentity_t *ent )
 		{
 			gi.SendServerCommand( ent->s.number, "ts %g", coopSentTimescale );
 		}
+		if ( G_CoopVersusOn() )
+		{	// versus: tell the joiner they can hunt instead of help
+			G_CoopPrintTr( ent->s.number, "print", "^3Mode versus^7 - ^5coop_team enemy^7 pour jouer les mechants.\n",
+				"^3Versus mode^7 - type ^5coop_team enemy^7 to hunt the jedi.\n" );
+		}
+	}
+	if ( ent->s.number >= 0 && ent->s.number < MAX_CLIENTS )
+	{
+		G_CoopSendStats( ent->s.number );	// coop: the joiner fills its scoreboard table
 	}
 }
 
@@ -2046,6 +2191,15 @@ cvar_t	*g_coopAllDownAuto;
 cvar_t	*g_coopPitRescue;		// 1 = a fall into a pit downs you on your last safe ground
 cvar_t	*g_coopPaksGen;		// coop: the engine bumps it when a pk3 enters the search path at runtime
 extern cvar_t	*g_coopFriendlyFire;
+cvar_t	*g_coopSkipCinematics;	// 1 = the host auto-skips every cinematic for everyone
+cvar_t	*g_coopCatchup;		// 1 = coop_cometome teleports you beside a living teammate
+cvar_t	*g_coopPickupShare;	// percent of ammo/health/armor pickups shared with nearby teammates
+cvar_t	*g_coopEnemyHealth;	// enemy NPC hit points scale (1.0 = stock)
+cvar_t	*g_coopNGPlus;
+cvar_t	*g_coopWaves;		// wave mode: 0 = off, 1 = endless enemy waves
+cvar_t	*g_coopHolocrons;	// scattered holocron pickups per map (0 = off)
+cvar_t	*g_mpPhysics;		// 1 = multiplayer movement constants for every player
+cvar_t	*g_coopVersus;		// 1 = players may join TEAM_ENEMY and hunt the Jedi (coop_team)
 
 void G_CoopInitDownedCvars( void )
 {
@@ -2060,6 +2214,47 @@ void G_CoopInitDownedCvars( void )
 	g_coopPaksGen = gi.cvar( "cl_coopPaksGen", "0", CVAR_ROM );
 	// serverinfo: a joiner can read what the host decided
 	g_coopFriendlyFire = gi.cvar( "g_coopFriendlyFire", "1", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	// serverinfo: joiners see when the host auto-skips the story
+	g_coopSkipCinematics = gi.cvar( "g_coopSkipCinematics", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	// serverinfo: the joiners play by the same house rules as the host
+	g_coopCatchup = gi.cvar( "g_coopCatchup", "1", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	g_coopPickupShare = gi.cvar( "g_coopPickupShare", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	g_coopEnemyHealth = gi.cvar( "g_coopEnemyHealth", "1", CVAR_ARCHIVE );
+	// serverinfo: joiners and the site see which NG+ cycle the host is on
+	g_coopNGPlus = gi.cvar( "g_coopNGPlus", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	g_coopWaves = gi.cvar( "g_coopWaves", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	// serverinfo: joiners see how many holocrons the host scattered on the map
+	g_coopHolocrons = gi.cvar( "g_coopHolocrons", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	// serverinfo: joiners read the movement rules in CS_COOP_PHYSICS for prediction
+	g_mpPhysics = gi.cvar( "g_mpPhysics", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	// serverinfo: versus sessions show up in server info and the scoreboard
+	g_coopVersus = gi.cvar( "g_coopVersus", "0", CVAR_ARCHIVE|CVAR_SERVERINFO );
+	memset( coopStatDowns, 0, sizeof( coopStatDowns ) );
+	memset( coopStatRevives, 0, sizeof( coopStatRevives ) );
+	memset( coopStatDeaths, 0, sizeof( coopStatDeaths ) );
+}
+
+/*
+==============================================================================
+Movement physics (g_mpPhysics)
+
+bg_pmove reads the bg_mpPhysics flag every move. The host's game sets it from
+the cvar here; joiners set it in cg_predict.cpp from CS_COOP_PHYSICS, so client
+prediction and server simulation agree whichever mode the host picked.
+==============================================================================
+*/
+
+void G_CoopPhysicsFrame( void )
+{
+	static int	csState = -1;
+	const int	mp = g_mpPhysics->integer > 0;
+
+	bg_mpPhysics = (qboolean)mp;
+	if ( mp != csState )
+	{
+		csState = mp;
+		gi.SetConfigstring( CS_COOP_PHYSICS, mp ? "1" : "0" );
+	}
 }
 
 /*
@@ -2095,6 +2290,10 @@ int G_CoopFriendlyFireScale( const gentity_t *targ, const gentity_t *attacker )
 	{
 		return 0;	// never in the lobby
 	}
+	if ( G_CoopVersusOn() && G_CoopSideOf( targ ) != G_CoopSideOf( attacker ) )
+	{
+		return 100;	// versus: enemy players are a fair target regardless of the FF setting
+	}
 	switch ( g_coopFriendlyFire->integer )
 	{
 	case 0:		return 0;
@@ -2124,7 +2323,104 @@ void G_CoopAnnounceKill( const gentity_t *victim, const gentity_t *attacker, qbo
 	{
 		G_CoopPrintTr( -1, "print", "^1%s ^7a tue ^1%s\n", "^1%s ^7killed ^1%s\n", attacker->client->pers.netname, victim->client->pers.netname );
 	}
-	gi.Printf( "coop: team kill - %s %s %s\n", attacker->client->pers.netname, downed ? "downed" : "killed", victim->client->pers.netname );
+	gi.Printf( "coop: %s - %s %s %s\n",
+		( G_CoopVersusOn() && G_CoopSideOf( victim ) != G_CoopSideOf( attacker ) ) ? "versus kill" : "team kill",
+		attacker->client->pers.netname, downed ? "downed" : "killed", victim->client->pers.netname );
+}
+
+/*
+==============================================================================
+Versus mode (g_coopVersus)
+
+L4D2-flavoured: "coop_team enemy" respawns you on TEAM_ENEMY - NPCs treat you
+as one of theirs (playerTeam drives their targeting), Jedi shots on you always
+land (G_CoopFriendlyFireScale cross-team), and the all-down flow only watches
+the Jedi side. Your side rides in CS_PLAYERS "t" so cgame paints you red and
+hides your tag until they can actually see you.
+==============================================================================
+*/
+
+qboolean G_CoopVersusOn( void )
+{
+	return (qboolean)( g_coopVersus && g_coopVersus->integer );
+}
+
+// which side a player fights on in versus mode (TEAM_PLAYER when off)
+team_t G_CoopSideOf( const gentity_t *ent )
+{
+	if ( ent && ent->client && G_CoopVersusOn()
+		&& ent->client->sess.sessionTeam == TEAM_ENEMY )
+	{
+		return TEAM_ENEMY;
+	}
+	return TEAM_PLAYER;
+}
+
+qboolean G_CoopIsVersusEnemy( const gentity_t *ent )
+{
+	return (qboolean)( G_CoopIsPlayer( ent ) && G_CoopSideOf( ent ) == TEAM_ENEMY );
+}
+
+// coop_team jedi|enemy - pick a side; takes effect on the next spawn, or right
+// away if you are alive (a team swap is a fresh spawn, like dying)
+void G_CoopVersusTeamCommand( gentity_t *ent )
+{
+	const char	*arg = gi.argv( 1 );
+
+	if ( !g_coopVersus || !g_coopVersus->integer )
+	{
+		gi.SendServerCommand( ent->s.number, "print \"versus mode is off (g_coopVersus 0)\n\"" );
+		return;
+	}
+	if ( ent->s.number == 0 )
+	{	// the host is the campaign anchor - zero jedi means an instant mission-fail loop
+		gi.SendServerCommand( 0, "print \"the host stays on the jedi side\n\"" );
+		return;
+	}
+	if ( !arg[0] )
+	{
+		gi.SendServerCommand( ent->s.number, "print \"you are on side: %s  (coop_team jedi|enemy)\n\"",
+			ent->client->sess.sessionTeam == TEAM_ENEMY ? "^1enemy" : "^2jedi" );
+		return;
+	}
+	team_t	want = TEAM_FREE;	// stock side: jedi
+	if ( !Q_stricmp( arg, "enemy" ) || !Q_stricmp( arg, "enemies" ) || !Q_stricmp( arg, "e" ) )
+	{
+		want = TEAM_ENEMY;
+	}
+	else if ( !Q_stricmp( arg, "toggle" ) )
+	{	// the F6 button does not know which side we are on: flip
+		want = ( ent->client->sess.sessionTeam == TEAM_ENEMY ) ? TEAM_FREE : TEAM_ENEMY;
+	}
+	else if ( Q_stricmp( arg, "jedi" ) && Q_stricmp( arg, "ally" ) && Q_stricmp( arg, "good" ) )
+	{
+		gi.SendServerCommand( ent->s.number, "print \"usage: coop_team jedi|enemy\n\"" );
+		return;
+	}
+	const qboolean	wasEnemy = (qboolean)( ent->client->sess.sessionTeam == TEAM_ENEMY );
+	const qboolean	isEnemy = (qboolean)( want == TEAM_ENEMY );
+	if ( wasEnemy == isEnemy )
+	{
+		return;	// already on that side
+	}
+	ent->client->sess.sessionTeam = want;
+	ClientUserinfoChanged( ent->s.number );	// CS_PLAYERS "t" follows the new side
+	if ( isEnemy )
+	{
+		G_CoopPrintTr( -1, "print", "^5%s ^7rejoint ^1l'ennemi^7!\n", "^5%s ^7joined the ^1enemies^7!\n", ent->client->pers.netname );
+	}
+	else
+	{
+		G_CoopPrintTr( -1, "print", "^5%s ^7rejoint les ^2jedi^7.\n", "^5%s ^7joined the ^2jedi^7.\n", ent->client->pers.netname );
+	}
+	if ( !G_CoopIsLobby() && ent->health > 0 && !G_CoopIsDowned( ent ) )
+	{	// downed players swap on their next natural spawn - no un-downing yourself
+		ClientSpawn( ent, eNO );
+		if ( isEnemy )
+		{
+			G_CoopVersusPlace( ent );	// go straight to the front instead of the map start
+		}
+	}
 }
 
 // the level goes away (or comes back): nobody is down
@@ -2167,6 +2463,10 @@ qboolean G_CoopAnyPlayerUp( void )
 {
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
+		if ( G_CoopIsVersusEnemy( &g_entities[i] ) )
+		{
+			continue;	// versus: the mission only fails while no Jedi is standing
+		}
 		if ( G_CoopIsUp( &g_entities[i] ) )
 		{
 			return qtrue;
@@ -2351,8 +2651,9 @@ death was turned into a downed state instead.
 */
 qboolean G_CoopTryDown( gentity_t *targ, gentity_t *attacker, int mod, int dflags )
 {
-	if ( !G_CoopIsPlayer( targ ) || !G_CoopDownedActive() || G_CoopIsDowned( targ ) || targ->s.number == coopBleedingOutNum )
-	{
+	if ( !G_CoopIsPlayer( targ ) || !G_CoopDownedActive() || G_CoopIsDowned( targ ) || targ->s.number == coopBleedingOutNum
+		|| G_CoopIsVersusEnemy( targ ) )
+	{	// versus hunters never go down - they die and respawn, L4D2 style
 		return qfalse;
 	}
 	// A pit is the one "real death" worth arguing with: the body lands out of
@@ -2457,6 +2758,8 @@ qboolean G_CoopTryDown( gentity_t *targ, gentity_t *attacker, int mod, int dflag
 		G_CoopPrintTr( -1, "print", "^1%s ^7est a terre !\n", "^1%s ^7is down!\n", targ->client->pers.netname );
 	}
 	gi.Printf( "coop: %s downed (mod %i), bleeds out in %i s\n", targ->client->pers.netname, mod, bleed / 1000 );
+	coopStatDowns[targ->s.number]++;	// coop: scoreboard
+	G_CoopBroadcastStats();
 	return qtrue;
 }
 
@@ -2493,6 +2796,380 @@ static void G_CoopRevive( gentity_t *target, gentity_t *reviver )
 		NPC_SetAnim( reviver, SETANIM_BOTH, BOTH_FORCEHEAL_STOP, SETANIM_FLAG_OVERRIDE|SETANIM_FLAG_HOLD );
 		G_CoopPrintTr( -1, "print", "^2%s ^7a releve ^2%s\n", "^2%s ^7revived ^2%s\n", reviver->client->pers.netname, target->client->pers.netname );
 		gi.Printf( "coop: %s revived by %s (%i hp)\n", target->client->pers.netname, reviver->client->pers.netname, health );
+		coopStatRevives[reviver->s.number]++;	// coop: scoreboard
+		G_CoopBroadcastStats();
+	}
+}
+
+/*
+==============================================================================
+Waypoint ping ("coop_ping" client command, MOUSE3 by default)
+
+A tap drops a marker where the player is aiming, shown to everybody for a
+few seconds ("ping" svcmd -> CG_CoopPing_f / CG_CoopDrawPings). One live
+ping per player: a new one replaces the old. Throttled per slot so a bind
+spam cannot flood the command stream.
+==============================================================================
+*/
+#define COOP_PING_THROTTLE	1200	// ms between two pings of the same player
+
+static int	coopPingTime[MAX_CLIENTS];
+
+void G_CoopPingCommand( gentity_t *ent )
+{
+	const int	slot = ent->s.number;
+
+	if ( !G_CoopIsPlayer( ent ) || level.time - coopPingTime[slot] < COOP_PING_THROTTLE )
+	{
+		return;
+	}
+
+	// where the aim lands; a miss pings the horizon, still a valid "over there"
+	playerState_t	*ps = &ent->client->ps;
+	vec3_t			eyes, dir, end;
+	trace_t			tr;
+
+	VectorCopy( ps->origin, eyes );
+	eyes[2] += ps->viewheight;
+	AngleVectors( ps->viewangles, dir, NULL, NULL );
+	VectorMA( eyes, 8192, dir, end );
+	gi.trace( &tr, eyes, NULL, NULL, end, slot, MASK_SOLID, (EG2_Collision)0, 0 );
+	VectorMA( tr.endpos, -8.0f, dir, tr.endpos );	// float off the surface a touch
+
+	coopPingTime[slot] = level.time;
+
+	char	name[36];
+	Q_strncpyz( name, ent->client->pers.netname, sizeof( name ) );
+	Q_strstrip( name, "\n\r\"", NULL );	// the svcmd embeds it between quotes
+
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		if ( G_CoopPlayerSlot( i ) )
+		{
+			gi.SendServerCommand( i, "ping %i \"%s\" %i %i %i", slot, name,
+				(int)tr.endpos[0], (int)tr.endpos[1], (int)tr.endpos[2] );
+		}
+	}
+}
+
+/*
+==============================================================================
+Co-op scoreboard ("cstat" svcmd, drawn while +coop_score is held)
+
+Kills ride along on PERS_ENEMIES_KILLED, which G_Damage already bumps. Downs,
+revives and deaths live in the counters above and reset each map. Every
+change re-sends the whole table: four ints per player, it is not worth
+packing tighter. A joiner gets the same rows from G_CoopClientBegin.
+==============================================================================
+*/
+static void G_CoopSendStats( int toSlot )
+{
+	for ( int s = 0; s < MAX_CLIENTS; s++ )
+	{
+		gentity_t	*p = G_CoopPlayerSlot( s );
+		if ( !p )
+		{
+			continue;
+		}
+		char	name[36];
+		Q_strncpyz( name, p->client->pers.netname, sizeof( name ) );
+		Q_strstrip( name, "\n\r\"", NULL );	// the svcmd embeds it between quotes
+		gi.SendServerCommand( toSlot, "cstat %i \"%s\" %i %i %i %i %i", s, name,
+			p->client->ps.persistant[PERS_ENEMIES_KILLED],
+			coopStatDowns[s], coopStatRevives[s], coopStatDeaths[s],
+			p->client->ps.ping );	// coop: the server smooths a real RTT into ps.ping
+	}
+}
+
+void G_CoopBroadcastStats( void )
+{
+	// the site reads the same table through sv_coopTeam at map end
+	char	buf[512];
+	int		off = 0;
+	buf[0] = 0;
+	for ( int s = 0; s < MAX_CLIENTS; s++ )
+	{
+		if ( G_CoopPlayerSlot( s ) )
+		{
+			off += snprintf( buf + off, sizeof( buf ) - off, "%s%i,%i,%i,%i",
+				off ? ";" : "", s, coopStatDowns[s], coopStatRevives[s], coopStatDeaths[s] );
+		}
+	}
+	gi.cvar_set( "sv_coopTeam", buf );
+
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		if ( G_CoopPlayerSlot( i ) )
+		{
+			G_CoopSendStats( i );
+		}
+	}
+}
+
+/*
+================
+G_CoopPrintScorecard
+
+End-of-map chat recap, like a modern co-op post-match screen: MVP (most
+kills), top medic (most revives) and the biggest casualty — each only when
+it beats zero.
+================
+*/
+void G_CoopPrintScorecard( void )
+{
+	int	bestK = 0, bestR = 0, bestD = 0;
+	int	iK = -1, iR = -1, iD = -1;
+
+	for ( int s = 0; s < MAX_CLIENTS; s++ )
+	{
+		gentity_t	*p = G_CoopPlayerSlot( s );
+		if ( !p || !p->client )
+		{
+			continue;
+		}
+		const int kills = p->client->ps.persistant[PERS_ENEMIES_KILLED];
+		if ( kills > bestK ) { bestK = kills; iK = s; }
+		if ( coopStatRevives[s] > bestR ) { bestR = coopStatRevives[s]; iR = s; }
+		if ( coopStatDeaths[s] > bestD ) { bestD = coopStatDeaths[s]; iD = s; }
+	}
+	G_CoopPrintTr( -1, "print", "^5--- debriefing ---\n", "^5--- mission debrief ---\n" );
+	if ( iK >= 0 )
+	{
+		gentity_t *p = G_CoopPlayerSlot( iK );
+		G_CoopPrintTr( -1, "print", "^3* MVP : ^7%s (%i frags)\n", "^3* MVP: ^7%s (%i kills)\n", p->client->pers.netname, bestK );
+	}
+	if ( iR >= 0 )
+	{
+		gentity_t *p = G_CoopPlayerSlot( iR );
+		G_CoopPrintTr( -1, "print", "^2+ Sauveteur : ^7%s (%i relevages)\n", "^2+ Medic: ^7%s (%i revives)\n", p->client->pers.netname, bestR );
+	}
+	if ( iD >= 0 )
+	{
+		gentity_t *p = G_CoopPlayerSlot( iD );
+		G_CoopPrintTr( -1, "print", "^1x Plus de morts : ^7%s (%i)\n", "^1x Most deaths: ^7%s (%i)\n", p->client->pers.netname, bestD );
+	}
+}
+
+/*
+==============================================================================
+Simon the Killer Ewok (Galactic Battlegrounds homage)
+
+"simonsays" in the console drops a jawa_armed — the closest thing JA ships
+to a murderous ewok — beside the caller, with Simon's 325 hp. Hostile, so
+the lobby that summons him had better mean it. One Simon at a time, 30 s
+between calls.
+==============================================================================
+*/
+void G_CoopSimonCommand( gentity_t *ent )
+{
+	static int	coopSimonNext = 0;
+
+	if ( !ent || !ent->client )
+	{
+		return;
+	}
+	if ( level.time < coopSimonNext )
+	{
+		G_CoopPrintTr( ent->s.number, "print", "Simon est deja de sortie.\n", "Simon is already out there.\n" );
+		return;
+	}
+	for ( int i = 0; i < globals.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->health > 0 && e->targetname && !Q_stricmp( e->targetname, "simon" ) )
+		{
+			G_CoopPrintTr( ent->s.number, "print", "Simon est deja de sortie.\n", "Simon is already out there.\n" );
+			return;
+		}
+	}
+	coopSimonNext = level.time + 30000;
+
+	// same spot math as NPC_Spawn_f, but at the caller instead of player 0
+	gentity_t *spawner = G_Spawn();
+	if ( !spawner )
+	{
+		return;
+	}
+	spawner->e_ThinkFunc = thinkF_G_FreeEntity;
+	spawner->nextthink = level.time + FRAMETIME;
+
+	vec3_t	forward, end;
+	trace_t	tr;
+	AngleVectors( ent->client->ps.viewangles, forward, NULL, NULL );
+	VectorNormalize( forward );
+	VectorMA( ent->currentOrigin, 64, forward, end );
+	gi.trace( &tr, ent->currentOrigin, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	VectorCopy( tr.endpos, end );
+	end[2] -= 24;
+	gi.trace( &tr, tr.endpos, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	VectorCopy( tr.endpos, end );
+	end[2] += 24;
+	G_SetOrigin( spawner, end );
+	VectorCopy( spawner->currentOrigin, spawner->s.origin );
+	spawner->s.angles[1] = ent->client->ps.viewangles[1];
+	gi.linkentity( spawner );
+
+	spawner->NPC_type = G_NewString( "jawa_armed" );
+	spawner->NPC_targetname = G_NewString( "simon" );
+	spawner->count = 1;
+	spawner->delay = 0;
+	spawner->wait = 500;
+	NPC_Spawn( spawner, spawner, spawner );
+
+	// Simon himself: Battlegrounds numbers, hostile like the original
+	for ( int i = 0; i < globals.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->targetname && !Q_stricmp( e->targetname, "simon" ) )
+		{
+			e->health = e->max_health = e->client->ps.stats[STAT_HEALTH] = e->client->ps.stats[STAT_MAX_HEALTH] = 325;
+		}
+	}
+	G_CoopPrintTr( -1, "print", "^1SIMON DIT : ^7%s a invoque Simon l'Ewok tueur !\n",
+		"^1SIMON SAYS: ^7%s summoned Simon the Killer Ewok!\n", ent->client->pers.netname );
+}
+
+/*
+==============================================================================
+Catch-up teleport ("coop_cometome" client command)
+
+Drops the caller beside its nearest living teammate, the same spot-finding
+a co-op respawn uses (G_CoopPlaceBeside). No use while dead (the respawn
+already does this), on the ground, in a vehicle or mid-cinematic, and a
+short cooldown keeps it from being a get-out-of-a-fight key.
+==============================================================================
+*/
+#define COOP_CATCHUP_THROTTLE	10000	// ms between two teleports of the same player
+
+static int	coopCatchupTime[MAX_CLIENTS];
+
+void G_CoopCatchupCommand( gentity_t *ent )
+{
+	if ( !G_CoopIsPlayer( ent )
+		|| !g_coopCatchup || !g_coopCatchup->integer
+		|| in_camera
+		|| ent->health <= 0 || G_CoopIsDowned( ent )
+		|| ent->s.m_iVehicleNum != 0
+		|| level.time - coopCatchupTime[ent->s.number] < COOP_CATCHUP_THROTTLE )
+	{
+		return;
+	}
+	gentity_t	*mate = G_CoopLivingTeammate( ent );
+	if ( !mate )
+	{
+		return;
+	}
+	coopCatchupTime[ent->s.number] = level.time;
+	G_CoopPlaceBeside( ent, mate );
+	G_CoopPrintTr( -1, "print", "^5%s ^7rejoint ^5%s\n", "^5%s ^7caught up with ^5%s\n",
+		ent->client->pers.netname, mate->client->pers.netname );
+}
+
+/*
+==============================================================================
+Quick chat ("coop_qchat <n>" client command)
+
+A few preset lines a key bind can drop into the chat feed. The table lives
+server-side so one edit reaches every client; the wire format is the same
+"chat" svcmd as Cmd_Say_f.
+==============================================================================
+*/
+static const char *coopQChat[] = {
+	"Follow me!",
+	"Wait here.",
+	"Help!",
+	"On my way!",
+	"Nice one!",
+};
+
+void G_CoopQChatCommand( gentity_t *ent )
+{
+	if ( !G_CoopIsPlayer( ent ) || gi.argc() < 2 )
+	{
+		return;
+	}
+	const int n = atoi( gi.argv( 1 ) ) - 1;
+	if ( n < 0 || n >= (int)( sizeof( coopQChat ) / sizeof( coopQChat[0] ) ) )
+	{
+		return;
+	}
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		if ( G_CoopPlayerSlot( i ) )
+		{
+			gi.SendServerCommand( i, "chat \"%s%c%c: %c%c%s\"",
+				ent->client->pers.netname,
+				Q_COLOR_ESCAPE, COLOR_WHITE,
+				Q_COLOR_ESCAPE, COLOR_GREEN,
+				coopQChat[n] );
+		}
+	}
+}
+
+/*
+==============================================================================
+Pickup sharing (g_coopPickupShare, a percent)
+
+A health/armor/ammo pickup also hands nearby living teammates that slice of
+it. Range-limited on purpose: the player who walked into the room still has
+to be near the loot for the party to benefit.
+==============================================================================
+*/
+#define COOP_SHARE_RANGE	384.0f
+
+void G_CoopSharePickup( const gentity_t *item, gentity_t *toucher )
+{
+	if ( !g_coopPickupShare || g_coopPickupShare->integer <= 0
+		|| !item->item || !G_CoopIsPlayer( toucher ) )
+	{
+		return;
+	}
+	const int type = item->item->giType;
+	if ( type != IT_AMMO && type != IT_HEALTH && type != IT_ARMOR )
+	{
+		return;
+	}
+	int quantity = item->item->quantity;
+	if ( type == IT_HEALTH && item->count )
+	{	// Pickup_Health: count overrides the item's quantity
+		quantity = item->count;
+	}
+	quantity = quantity * Com_Clampi( 0, 100, g_coopPickupShare->integer ) / 100;
+	if ( quantity <= 0 )
+	{
+		return;
+	}
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		gentity_t	*mate = G_CoopPlayerSlot( i );
+		if ( !mate || mate == toucher || !G_CoopIsUp( mate )
+			|| ( G_CoopVersusOn() && G_CoopSideOf( mate ) != G_CoopSideOf( toucher ) )
+			|| DistanceSquared( mate->currentOrigin, toucher->currentOrigin ) > COOP_SHARE_RANGE * COOP_SHARE_RANGE )
+		{
+			continue;
+		}
+		switch ( type )
+		{
+		case IT_AMMO:
+			Add_Ammo2( mate, item->item->giTag, quantity );
+			break;
+		case IT_HEALTH:
+			mate->health += quantity;
+			if ( mate->health > mate->client->ps.stats[STAT_MAX_HEALTH] )
+			{
+				mate->health = mate->client->ps.stats[STAT_MAX_HEALTH];
+			}
+			mate->client->ps.stats[STAT_HEALTH] = mate->health;
+			break;
+		case IT_ARMOR:
+			mate->client->ps.stats[STAT_ARMOR] += quantity;
+			if ( mate->client->ps.stats[STAT_ARMOR] > mate->client->ps.stats[STAT_MAX_HEALTH] )
+			{
+				mate->client->ps.stats[STAT_ARMOR] = mate->client->ps.stats[STAT_MAX_HEALTH];
+			}
+			mate->client->ps.powerups[PW_BATTLESUIT] = Q3_INFINITE;
+			break;
+		}
 	}
 }
 
@@ -2558,6 +3235,12 @@ void G_CoopDownedThink( gentity_t *ent, usercmd_t *ucmd )
 	playerState_t	*ps = &ent->client->ps;
 	coopDown_t		*me = &coopDown[ent->s.number];
 
+	if ( coopRespawnTime[ent->s.number] )
+	{	// dead and the co-op respawn is on its way: USE held picks the
+		// checkpoint spawn (G_CoopRespawn), else he lands beside a teammate
+		coopRespawnAtSpawn[ent->s.number] = ( ucmd->buttons & BUTTON_USE ) ? 1 : 0;
+	}
+
 	if ( me->downTime )
 	{	// on the ground: no moves, no buttons, still lying down
 		// coop: holding JUMP gives up - bleed out now and come back beside a
@@ -2610,8 +3293,8 @@ void G_CoopDownedThink( gentity_t *ent, usercmd_t *ucmd )
 		return;
 	}
 
-	if ( ent->health <= 0 )
-	{
+	if ( ent->health <= 0 || G_CoopIsVersusEnemy( ent ) )
+	{	// versus hunters can't revive - keeping a Jedi breathing is the other side's job
 		return;
 	}
 
@@ -2707,6 +3390,14 @@ void G_CoopDownedFrame( void )
 	const int frame = level.time - level.previousTime;
 
 	G_CoopRunDeferredAutosave();
+
+	// scoreboard pings drift constantly: push the table every couple seconds
+	static int	coopStatsNextTime = 0;
+	if ( level.time >= coopStatsNextTime )
+	{
+		coopStatsNextTime = level.time + 2000;
+		G_CoopBroadcastStats();
+	}
 
 	for ( int i = 0; i < MAX_CLIENTS; i++ )
 	{
@@ -3491,4 +4182,305 @@ void G_CoopSoundPath( const vec3_t origin, int entityNum, int channel, const cha
 {
 	G_CoopForwardSound( entityNum, channel, -1, path, -1 );
 	cgi_S_StartSound( origin, entityNum, channel, cgi_S_RegisterSound( path ) );
+}
+
+/*
+================
+G_CoopWaveFrame — coop wave mode (g_coopWaves)
+
+When enabled, the map's scripted enemies are left alone; every time no
+TEAM_ENEMY NPCs remain (and a short breather has passed), a bigger wave
+spawns around the players. Wave number goes out through sv_coopWave so
+the engine can ship it with the map-time report for the survival board.
+================
+*/
+static int	coopWaveNum = 0;
+static int	coopWaveCooldown = 0;
+static int	coopWaveNextCheck = 0;
+
+static const char *coopWaveTypes[] = {
+	// tier 0 — waves 1-3
+	"stormtrooper", "imperial", "jawa_armed",
+	// tier 1 — waves 4-7
+	"trandoshan", "weequay", "rodian", "gran",
+	// tier 2 — waves 8-11
+	"cultist", "swamptrooper", "snowtrooper",
+	// tier 3 — waves 12+
+	"reborn", "shadowtrooper", "hazardtrooper", "noghri",
+};
+#define COOP_WAVE_T1 3
+#define COOP_WAVE_T2 7
+#define COOP_WAVE_T3 11
+#define COOP_WAVE_TYPES 14
+
+static void G_CoopWaveSpawnOne( gentity_t *anchor, const char *npcType, int wave )
+{
+	gentity_t *spawner = G_Spawn();
+	if ( !spawner )
+	{
+		return;
+	}
+	spawner->e_ThinkFunc = thinkF_G_FreeEntity;
+	spawner->nextthink = level.time + FRAMETIME;
+
+	// ring around a random player: random bearing, 350-700 units out,
+	// dropped to the floor
+	vec3_t	end, fwd;
+	trace_t	tr;
+	float	ang = (float)( rand() % 360 ) * M_PI / 180.0f;
+	float	dist = 350.0f + (float)( rand() % 350 );
+	fwd[0] = cosf( ang ); fwd[1] = sinf( ang ); fwd[2] = 0;
+	VectorMA( anchor->currentOrigin, dist, fwd, end );
+	end[2] = anchor->currentOrigin[2] + 64;
+	VectorCopy( end, tr.endpos );
+	gi.trace( &tr, end, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	end[2] -= 512;
+	gi.trace( &tr, tr.endpos, NULL, NULL, end, 0, MASK_SOLID, (EG2_Collision)0, 0 );
+	if ( tr.fraction == 1.0f )
+	{
+		// no floor found — fall back to beside the anchor
+		VectorCopy( anchor->currentOrigin, tr.endpos );
+		tr.endpos[2] += 8;
+	}
+	VectorCopy( tr.endpos, end );
+	end[2] += 24;
+	G_SetOrigin( spawner, end );
+	VectorCopy( spawner->currentOrigin, spawner->s.origin );
+	spawner->s.angles[1] = ang * 180.0f / M_PI + 180.0f; // face the players
+	gi.linkentity( spawner );
+
+	spawner->NPC_type = G_NewString( npcType );
+	spawner->NPC_targetname = G_NewString( "wave" );
+	spawner->count = 1;
+	spawner->delay = 0;
+	spawner->wait = 500;
+	NPC_Spawn( spawner, spawner, spawner );
+
+	// scale HP with the wave number (+15% per wave over 1)
+	for ( int i = globals.num_entities - 1; i >= 0; i-- )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->health > 0 && e->targetname
+			&& !Q_stricmp( e->targetname, "wave" ) && e->max_health > 0
+			&& e->health == e->max_health )
+		{
+			int hp = (int)( e->max_health * ( 1.0f + 0.15f * ( wave - 1 ) ) );
+			e->health = hp;
+			e->max_health = hp;
+			if ( e->client )
+			{
+				e->client->ps.stats[STAT_HEALTH] = hp;
+				e->client->ps.stats[STAT_MAX_HEALTH] = hp;
+			}
+			break;
+		}
+	}
+}
+
+void G_CoopWaveFrame( void )
+{
+	extern cvar_t *g_coopWaves;
+	if ( !g_coopWaves || !g_coopWaves->integer )
+	{
+		if ( coopWaveNum > 0 )
+		{
+			coopWaveNum = 0;
+			gi.cvar_set( "sv_coopWave", "0" );
+		}
+		return;
+	}
+	if ( level.time < coopWaveNextCheck )
+	{
+		return;
+	}
+	coopWaveNextCheck = level.time + 1000;
+
+	// wave-mode enemy count (Simon doesn't count — he's his own event)
+	int enemies = 0;
+	for ( int i = 0; i < globals.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( e->inuse && e->NPC && e->health > 0 && e->client
+			&& e->client->playerTeam == TEAM_ENEMY
+			&& ( !e->targetname || Q_stricmp( e->targetname, "simon" ) ) )
+		{
+			enemies++;
+		}
+	}
+	if ( enemies > 0 || level.time < coopWaveCooldown )
+	{
+		return;
+	}
+
+	// next wave
+	coopWaveNum++;
+	int wave = coopWaveNum;
+	gi.cvar_set( "sv_coopWave", va( "%i", wave ) );
+	coopWaveCooldown = level.time + 8000; // 8s breather between waves
+	G_CoopPrintTr( -1, "cp", "VAGUE @%i", "WAVE @%i", wave );
+
+	int count = 2 + wave; // wave 1 = 3, wave 5 = 7, caps at 15
+	if ( count > 15 ) count = 15;
+
+	// roster tier by wave
+	int lo = 0, hi = COOP_WAVE_T1;
+	if ( wave >= 8 && wave < 12 )      { lo = COOP_WAVE_T1; hi = COOP_WAVE_T2; }
+	else if ( wave >= 12 )             { lo = COOP_WAVE_T2; hi = COOP_WAVE_TYPES; }
+	else if ( wave >= 4 )              { lo = 0; hi = COOP_WAVE_T2; }
+
+	for ( int i = 0; i < count; i++ )
+	{
+		// anchor on a random living player
+		gentity_t *anchor = G_CoopPlayerSlot( rand() % MAX_CLIENTS );
+		if ( !anchor || !anchor->client )
+		{
+			anchor = G_CoopPlayerSlot( 0 );
+		}
+		if ( !anchor || !anchor->client )
+		{
+			break;
+		}
+		G_CoopWaveSpawnOne( anchor, coopWaveTypes[ lo + rand() % ( hi - lo ) ], wave );
+	}
+}
+
+/*
+==============================================================================
+Holocron scatter (g_coopHolocrons)
+
+Port of the AdvancedJK multiplayer holocron auto-spawn: when the host sets
+g_coopHolocrons N the game scatters N force holocrons at random item/player
+spawn points on every map, so co-op runs have loot to hunt. Holocrons the map
+already places count toward N, so handcrafted maps stay handcrafted.
+==============================================================================
+*/
+static int		coopHoloTotal = 0;			// holocrons on the current map
+static int		coopHoloFound[MAX_CLIENTS];	// pickups per player slot
+static char		coopHoloDoneList[64];		// "cn;cn;" slots that completed the set
+
+/*
+==============
+G_CoopHoloPicked
+
+A player just grabbed a holocron. Track the set — collecting every holocron
+on the map earns that player a free site holocron (reported in the run post).
+==============
+*/
+void G_CoopHoloPicked( int cn )
+{
+	if ( coopHoloTotal <= 0 || cn < 0 || cn >= MAX_CLIENTS )
+	{
+		return;
+	}
+	if ( ++coopHoloFound[cn] < coopHoloTotal )
+	{
+		return;
+	}
+	if ( strstr( coopHoloDoneList, va( "%i;", cn ) ) )
+	{
+		return;
+	}
+	gentity_t *p = G_CoopPlayerSlot( cn );
+	if ( p )
+	{
+		G_CoopPrintTr( -1, "print", "%s ^2a collecte tous les holocrons !\n",
+			"%s ^2collected every holocron — site holocron unlocked!\n", p->client->pers.netname );
+	}
+	// engine relays the completer list to the site with the run report
+	Q_strcat( coopHoloDoneList, sizeof( coopHoloDoneList ), va( "%i;", cn ) );
+	gi.cvar_set( "sv_coopHolo", coopHoloDoneList );
+}
+
+static const char *coopHoloTypes[] = {
+	"holocron_force_heal",
+	"holocron_force_levitation",
+	"holocron_force_speed",
+	"holocron_force_push",
+	"holocron_force_pull",
+	"holocron_force_telepathy",
+	"holocron_force_grip",
+	"holocron_force_lightining",	// the engine's original classname typo
+	"holocron_force_saberthrow",
+};
+#define COOP_HOLO_TYPES	(sizeof(coopHoloTypes)/sizeof(coopHoloTypes[0]))
+
+void G_CoopHolocronSpawn( void )
+{
+	extern cvar_t *g_coopHolocrons;
+	extern qboolean G_CallSpawn( gentity_t *ent );
+
+	memset( coopHoloFound, 0, sizeof( coopHoloFound ) );
+	coopHoloDoneList[0] = 0;
+	gi.cvar_set( "sv_coopHolo", "" );
+
+	int want = g_coopHolocrons ? g_coopHolocrons->integer : 0;
+	if ( want > 32 ) want = 32;
+
+	int placed = 0;
+	gentity_t *spots[256];
+	int spotCount = 0;
+
+	for ( int i = 0; i < globals.num_entities; i++ )
+	{
+		gentity_t *e = &g_entities[i];
+		if ( !e->inuse ) continue;
+		if ( e->classname && !Q_stricmpn( e->classname, "holocron_", 9 ) )
+		{
+			placed++;
+			continue;
+		}
+		if ( e->item && spotCount < 256 )
+		{
+			spots[spotCount++] = e;
+		}
+	}
+
+	coopHoloTotal = placed;
+	want -= placed;
+	if ( want <= 0 ) return;
+
+	if ( spotCount == 0 )
+	{ // fallback: player spawn points
+		gentity_t *spot = NULL;
+		while ( ( spot = G_Find( spot, FOFS(classname), "info_player_deathmatch" ) ) != NULL && spotCount < 256 )
+		{
+			spots[spotCount++] = spot;
+		}
+	}
+	if ( spotCount == 0 )
+	{
+		gi.Printf( "Holocron: no spawn points found.\n" );
+		return;
+	}
+
+	int spawned = 0;
+	for ( int n = 0; n < want; n++ )
+	{
+		gentity_t *holo = G_Spawn();
+		if ( !holo ) break;
+
+		holo->classname = G_NewString( coopHoloTypes[ Q_irand( 0, (int)COOP_HOLO_TYPES - 1 ) ] );
+
+		// force level granted — mostly 1-2, the odd full level 3
+		int roll = Q_irand( 1, 10 );
+		holo->count = ( roll <= 5 ) ? 1 : ( roll <= 8 ) ? 2 : 3;
+
+		gentity_t *spot = spots[ Q_irand( 0, spotCount - 1 ) ];
+		VectorCopy( spot->currentOrigin, holo->s.origin );
+		holo->s.origin[2] += 16;
+		VectorCopy( holo->s.origin, holo->currentOrigin );
+
+		if ( !G_CallSpawn( holo ) )
+		{
+			G_FreeEntity( holo );
+			continue;
+		}
+		spawned++;
+	}
+	coopHoloTotal += spawned;
+	if ( spawned )
+	{
+		gi.Printf( "Holocron: scattered %i holocrons over %i spawn points.\n", spawned, spotCount );
+		G_CoopPrintTr( -1, "print", "%i holocrons caches sur cette carte...\n", "%i holocrons hidden on this map...\n", spawned );
+	}
 }

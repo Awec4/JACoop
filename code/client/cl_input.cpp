@@ -317,6 +317,8 @@ void IN_Button8Down(void) {IN_KeyDown(&in_buttons[8]);}
 void IN_Button8Up(void) {IN_KeyUp(&in_buttons[8]);}
 void IN_Button9Down(void) {IN_KeyDown(&in_buttons[9]);}
 void IN_Button9Up(void) {IN_KeyUp(&in_buttons[9]);}
+void IN_CoopScoreDown(void) {Cvar_Set( "cg_coopScore", Cvar_VariableValue( "cg_coopScore" ) > 0 ? "0" : "1" );}	// coop: toggle the mini scoreboard
+void IN_CoopScoreUp(void) {}
 void IN_Button10Down(void) {IN_KeyDown(&in_buttons[10]);}
 void IN_Button10Up(void) {IN_KeyUp(&in_buttons[10]);}
 void IN_Button11Down(void) {IN_KeyDown(&in_buttons[11]);}
@@ -623,8 +625,10 @@ void CL_CmdButtons( usercmd_t *cmd ) {
 		in_buttons[i].wasPressed = qfalse;
 	}
 
-	if ( Key_GetCatcher( ) ) {
-		//cmd->buttons |= BUTTON_TALK;
+	// coop: while typing chat (messagemode), drop attack buttons (SP has no BUTTON_TALK)
+	if ( Key_GetCatcher() & KEYCATCH_MESSAGE ) {
+		cmd->buttons &= ~( BUTTON_ATTACK | BUTTON_ALT_ATTACK | BUTTON_FORCE_LIGHTNING
+			| BUTTON_USE_FORCE | BUTTON_FORCE_DRAIN | BUTTON_FORCEGRIP | BUTTON_FORCE_FOCUS );
 	}
 
 	// allow the game to know if any key at all is
@@ -1028,6 +1032,8 @@ void CL_InitInput( void ) {
 	Cmd_AddCommand ("-button9", IN_Button9Up);
 	Cmd_AddCommand ("+coop_revive", IN_Button9Down);	// coop: BUTTON_COOP_REVIVE (bit 9)
 	Cmd_AddCommand ("-coop_revive", IN_Button9Up);
+	Cmd_AddCommand ("+coop_score", IN_CoopScoreDown);	// coop: hold-to-view scoreboard
+	Cmd_AddCommand ("-coop_score", IN_CoopScoreUp);
 	Cmd_AddCommand ("+button10", IN_Button10Down);
 	Cmd_AddCommand ("-button10", IN_Button10Up);
 	Cmd_AddCommand ("+button11", IN_Button11Down);

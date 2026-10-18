@@ -268,6 +268,11 @@ vmCvar_t	cg_shadows;
 vmCvar_t	cg_remoteClientCvar;	// coop: mirrors the engine cg_remoteClient cvar
 vmCvar_t	cg_coopPaksGen;			// coop: mirrors the engine cl_coopPaksGen cvar (pk3 transfer)
 vmCvar_t	cg_coopHud;				// coop: 1 = the JACoop HUD, 0 = the stock hud.menu
+vmCvar_t	cg_coopScore;			// coop: 1 while +coop_score is held (scoreboard)
+vmCvar_t	cg_coopTags;			// coop: 1 = name + health bar over living teammates
+vmCvar_t	cg_coopVoiceTalk;		// coop voice: talker bitmask + TX flag (engine-written)
+vmCvar_t	cg_chatBox;				// coop: chat line lifetime in ms (0 = hide box)
+vmCvar_t	cg_chatBoxHeight;		// coop: bottom Y of the chat stack
 vmCvar_t	cg_renderToTextureFX;
 vmCvar_t	cg_shadowCullDistance;
 vmCvar_t	cg_footsteps;
@@ -284,6 +289,8 @@ vmCvar_t	cg_crosshairForceHint;
 vmCvar_t	cg_crosshairX;
 vmCvar_t	cg_crosshairY;
 vmCvar_t	cg_crosshairSize;
+vmCvar_t	cg_crosshairDot;
+vmCvar_t	cg_speedometer;
 vmCvar_t	cg_draw2D;
 vmCvar_t	cg_drawStatus;
 vmCvar_t	cg_drawHUD;
@@ -391,6 +398,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_drawStatus, "cg_drawStatus", "1", CVAR_ARCHIVE  },
 	{ &cg_drawHUD, "cg_drawHUD", "1", 0  },
 	{ &cg_drawTimer, "cg_drawTimer", "0", CVAR_ARCHIVE  },
+	{ &cg_speedometer, "cg_speedometer", "0", CVAR_ARCHIVE  },
 	{ &cg_drawFPS, "cg_drawFPS", "0", CVAR_ARCHIVE  },
 	{ &cg_drawSnapshot, "cg_drawSnapshot", "0", CVAR_ARCHIVE  },
 	{ &cg_drawAmmoWarning, "cg_drawAmmoWarning", "1", CVAR_ARCHIVE  },
@@ -406,6 +414,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_updatedDataPadObjective, "cg_updatedDataPadObjective", "0", 0},
 
 	{ &cg_crosshairSize, "cg_crosshairSize", "24", CVAR_ARCHIVE },
+	{ &cg_crosshairDot, "cg_crosshairDot", "0", CVAR_ARCHIVE },
 	{ &cg_crosshairX, "cg_crosshairX", "0", CVAR_ARCHIVE },
 	{ &cg_crosshairY, "cg_crosshairY", "0", CVAR_ARCHIVE },
 	{ &cg_simpleItems, "cg_simpleItems", "0", CVAR_ARCHIVE },
@@ -481,6 +490,12 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_remoteClientCvar, "cg_remoteClient", "0", CVAR_ROM },
 	{ &cg_coopPaksGen, "cl_coopPaksGen", "0", CVAR_ROM },
 	{ &cg_coopHud, "cg_coopHud", "1", CVAR_ARCHIVE },
+	{ &cg_coopScore, "cg_coopScore", "1", CVAR_ARCHIVE },	// coop: persistent mini scoreboard; +coop_score toggles it
+	{ &cg_coopTags, "cg_coopTags", "1", CVAR_ARCHIVE },	// coop: name + health bar over living teammates
+	{ &cg_coopVoiceTalk, "cg_coopVoiceTalk", "0", CVAR_TEMP },	// coop voice: who is talking + local TX
+	// coop: on-screen chat box (same defaults as multiplayer)
+	{ &cg_chatBox, "cg_chatBox", "10000", CVAR_ARCHIVE },
+	{ &cg_chatBoxHeight, "cg_chatBoxHeight", "350", CVAR_ARCHIVE },
 	{ &cg_g2Marks, "cg_g2Marks", "1", CVAR_ARCHIVE },
 	{ &fx_expensivePhysics, "fx_expensivePhysics", "1", CVAR_ARCHIVE },
 	{ &cg_debugHealthBars,	"cg_debugHealthBars",	"0", CVAR_CHEAT },

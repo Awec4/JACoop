@@ -61,6 +61,7 @@ typedef struct coopCharState_s {
 	unsigned bodyHash;		// hash of the spec's body fields (everything but the hand prop) the ghoul2 was built from
 	int		handSpec;		// spec index the hand prop was last read from
 	char	hand[MAX_QPATH+2];	// "L:path" / "R:path" attached (gent->cinematicModel), or ""
+	int		hiltRetryAt;	// coop: cg.time when we may retry a missing saber hilt again
 } coopCharState_t;
 
 // hash of the spec's body: the first 10 fields (the 11th is the hand prop, which never needs a rebuild)
@@ -1239,20 +1240,62 @@ void CG_CoopSyncCharacter( centity_t *cent )
 
 	CG_CoopSyncHandModel( gent, st );
 
-	// weapon / saber hilt models follow s.weapon
-	if ( s->weapon != st->weapon )
+	// weapon / saber hilt models follow s.weapon. A switch that misses the hilt
+	// (model string not ready, or the slot already removed) used to stick: st->weapon
+	// was stored anyway, so the next frames never tried again and the saber was gone.
+	// coop: do not remove+reattach every frame on a dead hilt — that thrashed Ghoul2
+	// and, with the skin write on a failed attach, crashed in ucrtbase.
 	{
-		G_RemoveWeaponModels( gent );
-		if ( s->weapon == WP_SABER )
+		const qboolean hiltLive = (qboolean)( gent->weaponModel[0] >= 0 && gent->weaponModel[0] < gent->ghoul2.size()
+			&& gent->ghoul2[gent->weaponModel[0]].mModelindex >= 0 );
+		const qboolean wantSaber = (qboolean)( s->weapon == WP_SABER && !s->saberInFlight );
+		if ( s->weapon != st->weapon )
 		{
-			WP_SaberAddG2SaberModels( gent, -1 );
+			G_RemoveWeaponModels( gent );
+			if ( s->weapon == WP_SABER )
+			{
+				saberInfo_t *saber = &gent->client->ps.saber[0];
+				if ( ( !saber->model || !saber->model[0] ) && saber->name && saber->name[0] )
+				{
+					WP_SaberParseParms( saber->name, saber, qfalse );
+				}
+				if ( saber->model && saber->model[0] && gent->handRBolt >= 0 )
+				{
+					WP_SaberAddG2SaberModels( gent, -1 );
+				}
+			}
+			else if ( s->weapon > WP_NONE && s->weapon < WP_NUM_WEAPONS && weaponData[s->weapon].weaponMdl[0] )
+			{
+				G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handRBolt, 0 );
+				if ( ( s->weapon == WP_BLASTER_PISTOL || s->weapon == WP_BRYAR_PISTOL )
+					&& ( s->coopForce & COOPF_DUAL_PISTOLS ) )
+				{//dual pistols
+					G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handLBolt, 1 );
+				}
+			}
+			st->weapon = s->weapon;
+			st->inFlight = qfalse;
+			st->hiltRetryAt = 0;
 		}
-		else if ( s->weapon > WP_NONE && s->weapon < WP_NUM_WEAPONS && weaponData[s->weapon].weaponMdl[0] )
+		else if ( ( s->weapon == WP_BLASTER_PISTOL || s->weapon == WP_BRYAR_PISTOL )
+			&& ( s->coopForce & COOPF_DUAL_PISTOLS )
+			&& gent->weaponModel[1] <= 0 && gent->handLBolt >= 0 )
+		{//picked up the second pistol while already holding one - same weapon, no swap ran
+			G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handLBolt, 1 );
+		}
+		else if ( wantSaber && !hiltLive && gent->handRBolt >= 0 && cg.time >= st->hiltRetryAt )
 		{
-			G_CreateG2AttachedWeaponModel( gent, weaponData[s->weapon].weaponMdl, gent->handRBolt, 0 );
+			st->hiltRetryAt = cg.time + 250;
+			saberInfo_t *saber = &gent->client->ps.saber[0];
+			if ( ( !saber->model || !saber->model[0] ) && saber->name && saber->name[0] )
+			{
+				WP_SaberParseParms( saber->name, saber, qfalse );
+			}
+			if ( saber->model && saber->model[0] )
+			{
+				WP_SaberAddG2SaberModels( gent, -1 );
+			}
 		}
-		st->weapon = s->weapon;
-		st->inFlight = qfalse;
 	}
 
 	// saber throw: the hilt leaves the hand (the thrown entity carries it and
@@ -1264,7 +1307,11 @@ void CG_CoopSyncCharacter( centity_t *cent )
 		{
 			if ( gent->weaponModel[0] > 0 )
 			{
-				gi.G2API_RemoveGhoul2Model( gent->ghoul2, gent->weaponModel[0] );
+				// already removed by the weapon swap above: don't assert in G2API_RemoveGhoul2Model
+				if ( gent->weaponModel[0] < gent->ghoul2.size() && gent->ghoul2[gent->weaponModel[0]].mModelindex >= 0 )
+				{
+					gi.G2API_RemoveGhoul2Model( gent->ghoul2, gent->weaponModel[0] );
+				}
 				gent->weaponModel[0] = -1;
 			}
 		}
@@ -2386,6 +2433,25 @@ static const char *CG_CoopJumpKeyName( void )
 	return coopJumpKey;
 }
 
+// name of the key bound to +use ("E"): holding it while dead asks for the
+// checkpoint spawn instead of beside a teammate (G_CoopDownedThink)
+static char		coopUseKey[32];
+static int		coopUseKeyTime;
+static const char *CG_CoopUseKeyName( void )
+{
+	if ( cg.time - coopUseKeyTime > 1000 || !coopUseKey[0] )
+	{
+		coopUseKeyTime = cg.time;
+		cgi_Key_BindingKeyName( "+use", coopUseKey, sizeof( coopUseKey ) );
+		if ( !coopUseKey[0] )
+		{
+			Q_strncpyz( coopUseKey, G_CoopTr( "UTILISER", "USE" ), sizeof( coopUseKey ) );
+		}
+		Q_strupr( coopUseKey );
+	}
+	return coopUseKey;
+}
+
 // from CG_CalcViewValues: qtrue when org/angles now look at a teammate
 qboolean CG_CoopSpectate( vec3_t org, vec3_t angles )
 {
@@ -2460,6 +2526,50 @@ static void CG_CoopDrawCentered( float y, const char *text, const vec4_t color, 
 	cgi_R_Font_DrawString( 320 - w / 2, y, text, color, font, -1, scale );
 }
 
+// pin a world-space direction to the screen edge: which side of the edge is
+// where to turn. Shared by the waypoint pings and the downed-mate markers.
+static void CG_CoopEdgePoint( const vec3_t trans, float *ex, float *ey )
+{
+	float	dx = -DotProduct( trans, cg.refdef.viewaxis[1] );
+	float	dy = -DotProduct( trans, cg.refdef.viewaxis[2] );
+	if ( DotProduct( trans, cg.refdef.viewaxis[0] ) <= 0.001f )
+	{	// behind: mirror, so the marker sits on the side we must turn to
+		dx = -dx;
+		dy = -dy;
+	}
+	const float	len = sqrtf( dx * dx + dy * dy );
+	if ( len < 0.001f )
+	{
+		dx = 0;
+		dy = -1;
+	}
+	else
+	{
+		dx /= len;
+		dy /= len;
+	}
+	const float	m = 30;
+	float		t = 1e9f;
+	if ( dx > 0.001f )
+	{
+		t = ( 640 - m - 320 ) / dx;
+	}
+	else if ( dx < -0.001f )
+	{
+		t = ( m - 320 ) / dx;
+	}
+	if ( dy > 0.001f && ( 480 - m - 240 ) / dy < t )
+	{
+		t = ( 480 - m - 240 ) / dy;
+	}
+	else if ( dy < -0.001f && ( m - 240 ) / dy < t )
+	{
+		t = ( m - 240 ) / dy;
+	}
+	*ex = 320 + dx * t;
+	*ey = 240 + dy * t;
+}
+
 void CG_CoopDrawDowned( void )
 {
 	static const vec4_t red = { 1, 0.15f, 0.1f, 1 };
@@ -2517,6 +2627,17 @@ void CG_CoopDrawDowned( void )
 			CG_DrawPic( x - 12, y - 28, 24, 24, coopDownedIcon );
 			cgi_R_Font_DrawString( x - w / 2, y - 2, label, red, small, -1, 0.9f );
 		}
+		else
+		{	// off screen: pin the icon to the edge toward the body
+			vec3_t	trans;
+			float	ex, ey;
+			VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, trans );
+			CG_CoopEdgePoint( trans, &ex, &ey );
+			CG_DrawPic( ex - 8, ey - 8, 16, 16, coopDownedIcon );
+			const char *label = va( G_CoopTr( "A TERRE  %i m", "DOWN  %i m" ), (int)( dist / 32 ) );
+			const int	w = cgi_R_Font_StrLenPixels( label, small, 0.8f );
+			cgi_R_Font_DrawString( Com_Clamp( 4, 636 - w, ex - w / 2 ), Com_Clamp( 4, 460, ey + 10 ), label, red, small, -1, 0.8f );
+		}
 	}
 	cgi_R_SetAspect2D( 1 );
 
@@ -2568,6 +2689,7 @@ void CG_CoopDrawDowned( void )
 	{	// dead, watching a teammate until the respawn (CG_CoopSpectate)
 		CG_CoopDrawCentered( 400, G_CoopTr( "SPECTATEUR  -  retour pres d'un coequipier dans quelques secondes", "SPECTATING  -  back beside a teammate in a few seconds" ), white, small, 1.0f );
 		CG_CoopDrawCentered( 418, G_CoopTr( "Souris : tourner autour   -   Tir : joueur suivant", "Mouse: look around   -   Attack: next player" ), dim, small, 0.9f );
+		CG_CoopDrawCentered( 434, va( G_CoopTr( "Maintenir %s : reapparaitre au point de controle", "Hold %s: respawn at the checkpoint" ), CG_CoopUseKeyName() ), dim, small, 0.9f );
 		return;
 	}
 
@@ -2580,6 +2702,133 @@ void CG_CoopDrawDowned( void )
 	{	// beside someone on the ground (same measure as the host: player origin to body, g_coopReviveRange)
 		CG_CoopDrawCentered( 300, va( G_CoopTr( "Maintenir %s pour relever", "Hold %s to revive" ), CG_CoopReviveKeyName() ), white, font, 1.0f );
 	}
+}
+
+/*
+==============================================================================
+Teammate nametags
+
+A name and a health bar floating over each living teammate, through walls:
+nobody has to ask "who is that / is he about to die". Downed mates keep
+their louder marker; dead ones are corpses. cg_coopTags 0 hides the overlay.
+==============================================================================
+*/
+void CG_CoopDrawNametags( void )
+{
+	if ( !cg_coopTags.integer || !cg.snap || in_camera || cg.missionStatusShow || coopAllDownShown )
+	{
+		return;
+	}
+	const playerState_t	*ps = &cg.snap->ps;
+	const int			small = cgs.media.qhFontSmall;
+	const int			talkBits = cg_coopVoiceTalk.integer;	// coop voice: slot bits + TX flag (bit 30)
+	const char			*myCs = CG_ConfigString( CS_PLAYERS + ps->clientNum );
+	const qboolean		imEnemy = (qboolean)( atoi( Info_ValueForKey( myCs, "t" ) ) == TEAM_ENEMY );	// versus: which side I'm on
+
+	cgi_R_SetAspect2D( 0 );
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		const centity_t		*cent = &cg_entities[k];
+		const entityState_t	*s = &cent->currentState;
+		if ( k == ps->clientNum || !cent->currentValid || s->eType != ET_PLAYER
+			|| s->coopHealth <= 0 || ( s->powerups & ( 1 << PW_COOP_DOWNED ) ) )
+		{
+			continue;	// dead or downed teammates already have their markers
+		}
+		const char	*cs = CG_ConfigString( CS_PLAYERS + k );
+		const char	*name = cs[0] ? Info_ValueForKey( cs, "n" ) : "";
+		if ( !name[0] )
+		{
+			continue;
+		}
+		const qboolean	enemySide = (qboolean)( ( atoi( Info_ValueForKey( cs, "t" ) ) == TEAM_ENEMY ) != imEnemy );	// versus: the other side
+		const float dist = Distance( cg.refdef.vieworg, cent->lerpOrigin );
+		if ( dist < 48.0f || dist > 4000.0f )
+		{
+			continue;	// hugging the camera: noise; across the map: clutter
+		}
+		vec3_t	org;
+		float	x, y;
+		VectorCopy( cent->lerpOrigin, org );
+		org[2] += 60;
+		if ( !CG_WorldCoordToScreenCoordFloat( org, &x, &y ) || x < 4 || x > 636 || y < 4 || y > 476 )
+		{
+			if ( enemySide )
+			{
+				continue;	// versus: hunters stay hidden until they're on screen
+			}
+			// offscreen teammate: pin the name to the screen edge in their
+			// direction so the group can find each other without wandering
+			if ( dist < 60.0f )
+			{
+				continue;
+			}
+			vec3_t	dir;
+			VectorSubtract( cent->lerpOrigin, cg.refdef.vieworg, dir );
+			float	z = DotProduct( dir, cg.refdef.viewaxis[0] );
+			float	rx = DotProduct( dir, cg.refdef.viewaxis[1] );	// left+
+			float	uy = DotProduct( dir, cg.refdef.viewaxis[2] );	// up+
+			if ( z < 8.0f )
+			{	// behind the camera: flip so the edge lands opposite, and
+				// park straight-behind at bottom-center instead of mid screen
+				rx = -rx; uy = -uy; z = 8.0f;
+				if ( rx * rx + uy * uy < 400.0f ) uy = -60.0f;
+			}
+			const float	ex = Com_Clamp( 20.0f, 616.0f, 320.0f - rx * 320.0f / ( z * tan( cg.refdef.fov_x * 0.008726646f ) ) );
+			const float	ey = Com_Clamp( 16.0f, 452.0f, 240.0f - uy * 240.0f / ( z * tan( cg.refdef.fov_y * 0.008726646f ) ) );
+			vec4_t	edgeCol = { 1, 1, 1, 0.55f };
+			if ( talkBits & ( 1 << k ) )
+			{
+				edgeCol[0] = 0.4f; edgeCol[2] = 0.4f;	// talking offscreen still shows green
+			}
+			const int	ew = cgi_R_Font_StrLenPixels( name, small, 0.6f );
+			cgi_R_Font_DrawString( ex - ew / 2, ey, name, edgeCol, small, -1, 0.6f );
+			continue;
+		}
+		if ( dist > 2200.0f )
+		{
+			continue;
+		}
+		if ( enemySide )
+		{	// versus: no wallhack either - the tag needs clear line of sight
+			vec3_t	mid;
+			trace_t	tr;
+			VectorCopy( cent->lerpOrigin, mid );
+			mid[2] += 36;	// torso height - feet can sit inside a step
+			CG_Trace( &tr, cg.refdef.vieworg, NULL, NULL, mid, ps->clientNum, MASK_SOLID );
+			if ( tr.entityNum != k )
+			{
+				continue;
+			}
+		}
+		const float alpha = Com_Clamp( 0.35f, 0.95f, 1.0f - dist / 2400.0f );
+		vec4_t		nameCol = { 1, 1, 1, alpha };
+		if ( enemySide )
+		{
+			nameCol[0] = 1.0f;	// versus hunter reads red
+			nameCol[1] = 0.35f;
+			nameCol[2] = 0.3f;
+		}
+		else if ( talkBits & ( 1 << k ) )
+		{
+			nameCol[0] = 0.4f;	// green while they are talking
+			nameCol[1] = 1.0f;
+			nameCol[2] = 0.4f;
+		}
+		const int	w = cgi_R_Font_StrLenPixels( name, small, 0.8f );
+		cgi_R_Font_DrawString( x - w / 2, y - 14, name, nameCol, small, -1, 0.8f );
+
+		const float frac = s->coopMaxHealth > 0
+			? Com_Clamp( 0.0f, 1.0f, (float)s->coopHealth / s->coopMaxHealth ) : 1.0f;
+		vec4_t	fill = { 1.0f - frac, 0.2f + 0.7f * frac, 0.15f, alpha };
+		CG_CoopDrawBar( x - 18, y - 10, 36, 4, frac, fill );
+	}
+	if ( talkBits & ( 1 << 30 ) )	// engine sets this while +coop_voice transmits
+	{
+		const vec4_t	voxCol = { 0.4f, 1.0f, 0.4f, 0.9f };
+		cgi_R_Font_DrawString( SCREEN_WIDTH - 40, SCREEN_HEIGHT - 28, "VOX", voxCol, small, -1, 0.9f );
+	}
+	cgi_R_SetAspect2D( 1 );
 }
 
 /*
@@ -2645,4 +2894,249 @@ void CG_CoopSound_f( void )
 			cgi_S_StartSound( NULL, entNum, channel, cgi_S_RegisterSound( path ) );
 		}
 	}
+}
+
+/*
+==============================================================================
+Waypoint pings ("ping <slot> \"<name>\" <x> <y> <z>" - G_CoopPingCommand)
+
+A teammate aimed at a spot and tapped its ping key: one live ping per
+player, ~10 s, a new one replaces the old. On screen: a diamond over the
+spot with who pinged and how far; off screen or behind: a smaller diamond
+pinned to the edge it sits off, with the distance.
+==============================================================================
+*/
+#define COOP_PING_MS	10000
+
+typedef struct {
+	int		endTime;
+	vec3_t	pos;
+	char	name[36];
+} coopPing_t;
+
+static coopPing_t	coopPings[MAX_CLIENTS];
+
+void CG_CoopPing_f( void )
+{
+	if ( cgi_Argc() < 6 )
+	{
+		return;
+	}
+	const int	slot = atoi( CG_Argv( 1 ) );
+	if ( slot < 0 || slot >= MAX_CLIENTS )
+	{
+		return;
+	}
+	coopPing_t *p = &coopPings[slot];
+	p->endTime = cg.time + COOP_PING_MS;
+	p->pos[0] = atof( CG_Argv( 3 ) );
+	p->pos[1] = atof( CG_Argv( 4 ) );
+	p->pos[2] = atof( CG_Argv( 5 ) );
+	Q_strncpyz( p->name, CG_Argv( 2 ), sizeof( p->name ) );
+}
+
+void CG_CoopDrawPings( void )
+{
+	static const vec4_t	cyan = { 0.4f, 0.9f, 1.0f, 1.0f };
+	static const vec4_t	white = { 1, 1, 1, 1 };
+
+	if ( !cg.snap || in_camera || cg.missionStatusShow || coopAllDownShown )
+	{
+		return;
+	}
+
+	cgi_R_SetAspect2D( 0 );
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		const coopPing_t	*p = &coopPings[k];
+		const int			left = p->endTime - cg.time;
+		if ( left <= 0 )
+		{
+			continue;
+		}
+
+		vec4_t	col;
+		memcpy( col, cyan, sizeof( col ) );
+		if ( left < 1000 )
+		{	// fading out
+			col[3] *= left / 1000.0f;
+		}
+
+		const int	dist = (int)( Distance( cg.refdef.vieworg, p->pos ) / 32 );
+		vec3_t		trans, wpos;
+		VectorSubtract( p->pos, cg.refdef.vieworg, trans );
+		VectorCopy( p->pos, wpos );
+		const float	z = DotProduct( trans, cg.refdef.viewaxis[0] );	// ahead of us?
+
+		float	x, y;
+		if ( z > 0.001f && CG_WorldCoordToScreenCoordFloat( wpos, &x, &y )
+			&& x >= 8 && x <= 632 && y >= 8 && y <= 472 )
+		{	// on screen: a diamond over the spot, who + distance under it
+			cgi_R_SetColor( col );
+			CG_DrawRotatePic( x - 8, y - 8, 16, 16, 45.0f, cgs.media.whiteShader );
+			cgi_R_SetColor( white );
+
+			const char	*label = va( "%s  ^5%i m", p->name, dist );
+			const int	w = cgi_R_Font_StrLenPixels( label, cgs.media.qhFontSmall, 0.9f );
+			cgi_R_Font_DrawString( x - w / 2, y + 12, label, col, cgs.media.qhFontSmall, -1, 0.9f );
+		}
+		else
+		{	// off screen or behind us: pin the marker to the edge it sits off
+			float	ex, ey;
+			CG_CoopEdgePoint( trans, &ex, &ey );
+
+			cgi_R_SetColor( col );
+			CG_DrawRotatePic( ex - 6, ey - 6, 12, 12, 45.0f, cgs.media.whiteShader );
+			cgi_R_SetColor( white );
+
+			const char	*label = va( "%s  %i m", p->name, dist );
+			const int	w = cgi_R_Font_StrLenPixels( label, cgs.media.qhFontSmall, 0.8f );
+			const float	tx = Com_Clamp( 4, 636 - w, ex - w / 2 );
+			const float	ty = Com_Clamp( 4, 452, ey + 10 );
+			cgi_R_Font_DrawString( tx, ty, label, col, cgs.media.qhFontSmall, -1, 0.8f );
+		}
+	}
+	cgi_R_SetAspect2D( 1 );
+}
+
+/*
+==============================================================================
+Co-op scoreboard ("cstat" svcmd, shown while +coop_score is held)
+
+The server keeps the counters (kills ride along on PERS_ENEMIES_KILLED) and
+re-sends the whole table on every change; a "cstat <slot> \"\"" clears a row
+on disconnect.
+==============================================================================
+*/
+typedef struct {
+	char	name[36];
+	int		kills;
+	int		downs;
+	int		revives;
+	int		deaths;
+	int		ping;
+} coopStat_t;
+
+static coopStat_t	coopStats[MAX_CLIENTS];
+
+void CG_CoopStats_f( void )
+{
+	if ( cgi_Argc() < 8 )
+	{
+		return;
+	}
+	const int	slot = atoi( CG_Argv( 1 ) );
+	if ( slot < 0 || slot >= MAX_CLIENTS )
+	{
+		return;
+	}
+	coopStat_t	*s = &coopStats[slot];
+	Q_strncpyz( s->name, CG_Argv( 2 ), sizeof( s->name ) );
+	s->kills = atoi( CG_Argv( 3 ) );
+	s->downs = atoi( CG_Argv( 4 ) );
+	s->revives = atoi( CG_Argv( 5 ) );
+	s->deaths = atoi( CG_Argv( 6 ) );
+	s->ping = atoi( CG_Argv( 7 ) );
+}
+
+void CG_CoopDrawScoreboard( void )
+{
+	static const vec4_t	panel = { 0.02f, 0.02f, 0.05f, 0.45f };
+	static const vec4_t	head = { 0.85f, 0.82f, 0.72f, 0.8f };
+	static const vec4_t	hairline = { 0.85f, 0.82f, 0.72f, 0.22f };
+	static const vec4_t	rowCol = { 1, 1, 1, 0.9f };
+	static const vec4_t	meCol = { 0.4f, 1.0f, 0.4f, 1.0f };
+	static const vec4_t	enemyCol = { 1.0f, 0.35f, 0.3f, 0.9f };	// versus: hunters read red
+
+	if ( !cg.snap )
+	{
+		return;
+	}
+	const int	small = cgs.media.qhFontSmall;
+
+	// gather the live rows, best score first
+	int			order[MAX_CLIENTS], rows = 0;
+	for ( int k = 0; k < MAX_CLIENTS; k++ )
+	{
+		if ( coopStats[k].name[0] )
+		{
+			int	i = rows++;
+			while ( i > 0 && ( coopStats[order[i - 1]].kills < coopStats[k].kills
+				|| ( coopStats[order[i - 1]].kills == coopStats[k].kills
+					&& coopStats[order[i - 1]].deaths > coopStats[k].deaths ) ) )
+			{
+				order[i] = order[i - 1];
+				i--;
+			}
+			order[i] = k;
+		}
+	}
+	if ( !rows )
+	{
+		return;
+	}
+	const int	rowH = 10;
+	const int	x1 = 636, x0 = x1 - 206;	// coop: slim panel, docked to the right edge
+	const int	y0 = 40;
+	const char	*cols[6] = {
+		"",
+		G_CoopTr( "F", "K" ),		// frags / kills
+		G_CoopTr( "A", "D" ),		// a terre / downs
+		G_CoopTr( "R", "R" ),		// releves / revives
+		G_CoopTr( "M", "X" ),		// morts / deaths
+		"ms",
+	};
+	// right edge of each numeric column (the name hugs the left, max 112px)
+	const int	colR[6] = { 0, x0 + 140, x0 + 158, x0 + 176, x0 + 194, x1 - 6 };
+	const int	talkBits = cg_coopVoiceTalk.integer;
+
+	cgi_R_SetAspect2D( 0 );
+	CG_FillRect( x0, y0, x1 - x0, ( rows + 2 ) * rowH + 4, panel );
+
+	// title: server name left, occupancy right
+	const char	*info = CG_ConfigString( CS_SERVERINFO );
+	const char	*hostname = Info_ValueForKey( info, "sv_hostname" );
+	if ( !hostname[0] )
+	{
+		hostname = "JACOOP";
+	}
+	cgi_R_Font_DrawString( x0 + 6, y0 + 2, hostname, head, small, x1 - x0 - 44, 0.62f );
+	{
+		const char	*count = va( "%i/%s", rows, Info_ValueForKey( info, "sv_maxclients" ) );
+		const int	cw = cgi_R_Font_StrLenPixels( count, small, 0.62f );
+		cgi_R_Font_DrawString( x1 - 6 - cw, y0 + 2, count, head, small, -1, 0.62f );
+	}
+
+	for ( int c = 1; c < 6; c++ )
+	{
+		const int	w = cgi_R_Font_StrLenPixels( cols[c], small, 0.6f );
+		cgi_R_Font_DrawString( colR[c] - w, y0 + rowH + 1, cols[c], head, small, -1, 0.6f );
+	}
+	CG_FillRect( x0 + 4, y0 + 2 * rowH, x1 - x0 - 8, 1, hairline );
+
+	int	y = y0 + 2 * rowH + 3;
+	for ( int r = 0; r < rows; r++ )
+	{
+		const coopStat_t	*s = &coopStats[order[r]];
+		const char		*pcs = CG_ConfigString( CS_PLAYERS + order[r] );
+		const vec4_t	*col = ( cg.snap->ps.clientNum == order[r] ) ? &meCol
+			: ( atoi( Info_ValueForKey( pcs, "t" ) ) == TEAM_ENEMY ) ? &enemyCol : &rowCol;
+		const char		*num[5] = {
+			va( "%i", s->kills ), va( "%i", s->downs ), va( "%i", s->revives ),
+			va( "%i", s->deaths ), va( "%i", s->ping ),
+		};
+		if ( talkBits & ( 1 << order[r] ) )
+		{	// voice: green dot while this player is transmitting
+			static const vec4_t	talkDot = { 0.4f, 1.0f, 0.4f, 1.0f };
+			CG_FillRect( x0 + 6, y + 2, 4, 4, talkDot );
+		}
+		cgi_R_Font_DrawString( x0 + 14, y, s->name, *col, small, 104, 0.7f );
+		for ( int c = 0; c < 5; c++ )
+		{
+			const int	w = cgi_R_Font_StrLenPixels( num[c], small, 0.7f );
+			cgi_R_Font_DrawString( colR[c + 1] - w, y, num[c], *col, small, -1, 0.7f );
+		}
+		y += rowH;
+	}
+	cgi_R_SetAspect2D( 1 );
 }

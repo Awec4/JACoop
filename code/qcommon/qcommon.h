@@ -146,6 +146,7 @@ qboolean	NET_CompareBaseAdr (netadr_t a, netadr_t b);
 qboolean	NET_IsLocalAddress (netadr_t adr);
 qboolean	NET_IsLANAddress (netadr_t adr);
 const char	*NET_AdrToString (netadr_t a);
+const char	*NET_GetLocalIP (void);	// coop: our LAN address for invites
 qboolean	NET_StringToAdr ( const char *s, netadr_t *a);
 qboolean	NET_GetLoopPacket (netsrc_t sock, netadr_t *net_from, msg_t *net_message);
 

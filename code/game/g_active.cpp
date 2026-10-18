@@ -4757,6 +4757,10 @@ usually be a couple times for each server frame on fast clients.
 extern int		G_FindLocalInterestPoint( gentity_t *self );
 extern float	G_CanJumpToEnemyVeh(Vehicle_t *pVeh, const usercmd_t *pUmcd );
 
+// coop: the g_coopSkipCinematics cvar auto-skips each cinematic once; this
+// keeps a manual un-skip from being instantly re-applied until it ends
+static qboolean	coopCinAutoSkipped = qfalse;
+
 void ClientThink_real( gentity_t *ent, usercmd_t *ucmd )
 {
 	gclient_t	*client;
@@ -4838,6 +4842,14 @@ extern cvar_t	*g_skippingcin;
 		{
 			// watch the code here, you MUST "return" within this IF(), *unless* you're stopping the cinematic skip.
 			//
+			extern cvar_t *g_coopSkipCinematics;
+			if ( ent->s.number == 0 && g_coopSkipCinematics && g_coopSkipCinematics->integer
+				&& !g_skippingcin->integer && !coopCinAutoSkipped )
+			{// coop: cvar skips the cinematic for everyone the moment it starts (once, so use still un-skips)
+				coopCinAutoSkipped = qtrue;
+				G_StartCinematicSkip();
+				return;
+			}
 			if ( ClientCinematicThink(ent->client) && ent->s.number == 0 )	// coop: only the host skips the story
 			{
 				if (g_skippingcin->integer)	// already doing cinematic skip?
@@ -4861,6 +4873,7 @@ extern cvar_t	*g_skippingcin;
 		}
 		else
 		{
+			coopCinAutoSkipped = qfalse;	// coop: next cinematic can auto-skip again
 			if ( g_skippingcin->integer )
 			{//We're skipping the cinematic and it's over now
 				gi.cvar_set("timescale", "1");

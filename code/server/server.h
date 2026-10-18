@@ -196,6 +196,7 @@ typedef struct client_s {
 	int				deltaMessage;		// frame last client usercmd message
 	int				lastPacketTime;		// sv.time when packet was last received
 	int				lastConnectTime;	// sv.time when connection started
+	int				ping;				// coop: smoothed RTT, from snapshot ack times
 	qboolean		droppedCommands;	// true if enough pakets to pass the cl_packetdup were dropped
 	int				timeoutCount;		// must timeout a few frames in a row so debugging doesn't break
 	clientSnapshot_t	frames[PACKET_BACKUP];	// updates can be delta'd from here
@@ -235,6 +236,7 @@ extern	cvar_t	*sv_showloss;
 extern	cvar_t	*sv_killserver;
 extern	cvar_t	*sv_mapname;
 extern	cvar_t	*sv_hostname;			// D2: LAN co-op browser name
+extern	cvar_t	*sv_password;			// lobby password; empty = open game
 extern	cvar_t	*sv_maxclients;			// E1: connection limit (<= MAX_CLIENTS)
 extern	cvar_t	*sv_spawntarget;
 extern	cvar_t	*sv_mapChecksum;
@@ -299,6 +301,11 @@ void SV_UpdateServerCommandsToClient( client_t *client, msg_t *msg );
 extern cvar_t	*sv_coopTransfer;
 extern cvar_t	*sv_coopTransferPending;
 void SV_CoopTransferInit( void );
+
+// sv_status.cpp -- coop: publish this host's status to a web API
+void SV_StatusInit( void );
+void SV_StatusFrame( void );
+void SV_StatusMapStarted( const char *mapname );
 void SV_CoopTransferFrame( void );
 void SV_CoopTransferShutdown( void );
 void SV_CoopTransferClose( client_t *cl );

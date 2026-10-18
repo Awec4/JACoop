@@ -835,7 +835,29 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 		char	saber1Name[MAX_QPATH];
 		const char	*var;
 
-		gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( sCVARNAME_PLAYERSAVE, slot ), s, sizeof(s) );
+		// coop NG+: on a fresh campaign (yavin1) with g_coopNGPlus set, the kor2
+		// snapshot takes precedence — the normal playersave holds lobby gear.
+		const char	*psBase = sCVARNAME_PLAYERSAVE;
+		const char	*ammoBase = "playerammo";
+		const char	*invBase = "playerinv";
+		const char	*fpBase = "playerfplvl";
+
+		gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( psBase, slot ), s, sizeof(s) );
+		{
+			extern cvar_t *g_coopNGPlus;
+			if ( g_coopNGPlus && g_coopNGPlus->integer > 0 && !Q_stricmp( level.mapname, "yavin1" ) )
+			{
+				char	ng[MAX_STRING_CHARS];
+				gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "ngsave", slot ), ng, sizeof(ng) );
+				if ( ng[0] )
+				{
+					Q_strncpyz( s, ng, sizeof(s) );
+					ammoBase = "ngammo";
+					invBase = "nginv";
+					fpBase = "ngfplvl";
+				}
+			}
+		}
 
 		if (strlen(s))	// actually this would be safe anyway because of the way sscanf() works, but this is clearer
 		{//				|general info				  |-force powers |-saber 1										   |-saber 2										  |-general saber
@@ -945,7 +967,7 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 //			SetClientViewAngle( ent, ent->client->ps.viewangles);
 
 			//ammo
-			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "playerammo", slot ), s, sizeof(s) );
+			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( ammoBase, slot ), s, sizeof(s) );
 			i=0;
 			var = strtok( s, " " );
 			while( var != NULL )
@@ -958,7 +980,7 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 			assert (i==AMMO_MAX);
 
 			//inventory
-			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "playerinv", slot ), s, sizeof(s) );
+			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( invBase, slot ), s, sizeof(s) );
 			i=0;
 			var = strtok( s, " " );
 			while( var != NULL )
@@ -973,7 +995,7 @@ static void Player_RestoreFromPrevLevel(gentity_t *ent, SavedGameJustLoaded_e eS
 
 			// the new JK2 stuff - force powers, etc...
 			//
-			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( "playerfplvl", slot ), s, sizeof(s) );
+			gi.Cvar_VariableStringBuffer( G_PlayerSaveCvarName( fpBase, slot ), s, sizeof(s) );
 			i=0;
 			var = strtok( s, " " );
 			while( var != NULL )
@@ -1959,14 +1981,22 @@ void G_RemoveWeaponModels( gentity_t *ent )
 {
 	if ( ent->ghoul2.size() )
 	{
+		// slot already removed (mModelindex -1): G2API_RemoveGhoul2Model asserts.
+		// Still forget the index, or a later reattach thinks the hilt is there.
 		if ( ent->weaponModel[0] > 0 )
 		{
-			gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[0] );
+			if ( ent->weaponModel[0] < ent->ghoul2.size() && ent->ghoul2[ent->weaponModel[0]].mModelindex >= 0 )
+			{
+				gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[0] );
+			}
 			ent->weaponModel[0] = -1;
 		}
 		if ( ent->weaponModel[1] > 0 )
 		{
-			gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[1] );
+			if ( ent->weaponModel[1] < ent->ghoul2.size() && ent->ghoul2[ent->weaponModel[1]].mModelindex >= 0 )
+			{
+				gi.G2API_RemoveGhoul2Model( ent->ghoul2, ent->weaponModel[1] );
+			}
 			ent->weaponModel[1] = -1;
 		}
 	}
@@ -1987,6 +2017,11 @@ void G_AddWeaponModels( gentity_t *ent )
 		else if ( ent->client->ps.weapon != WP_NONE )
 		{
 			G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handRBolt, 0 );
+			if ( (ent->client->ps.weapon == WP_BLASTER_PISTOL || ent->client->ps.weapon == WP_BRYAR_PISTOL)
+				&& ent->client->dualPistols )
+			{//dual pistols
+				G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handLBolt, 1 );
+			}
 		}
 	}
 }
@@ -2409,6 +2444,11 @@ qboolean ClientSpawn(gentity_t *ent, SavedGameJustLoaded_e eSavedGameJustLoaded 
 		}
 		client->playerTeam = TEAM_PLAYER;
 		client->enemyTeam = TEAM_ENEMY;
+		if ( G_CoopIsVersusEnemy( ent ) )
+		{	// coop versus: this player hunts the Jedi, alongside the NPCs
+			client->playerTeam = TEAM_ENEMY;
+			client->enemyTeam = TEAM_PLAYER;
+		}
 		ent->contents = CONTENTS_BODY;
 		ent->clipmask = MASK_PLAYERSOLID;
 		ent->e_DieFunc = dieF_player_die;
@@ -2595,6 +2635,11 @@ qboolean ClientSpawn(gentity_t *ent, SavedGameJustLoaded_e eSavedGameJustLoaded 
 		if ( ent->weaponModel[0] == -1 && ent->client->ps.weapon != WP_NONE )
 		{
 			G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handRBolt, 0 );
+			if ( (ent->client->ps.weapon == WP_BLASTER_PISTOL || ent->client->ps.weapon == WP_BRYAR_PISTOL)
+				&& ent->client->dualPistols )
+			{//dual pistols
+				G_CreateG2AttachedWeaponModel( ent, weaponData[ent->client->ps.weapon].weaponMdl, ent->handLBolt, 1 );
+			}
 		}
 
 		if ( index == 0 )
@@ -2679,6 +2724,15 @@ void ClientDisconnect( int clientNum ) {
 	ent->client->ps.persistant[PERS_TEAM] = TEAM_FREE;
 
 	gi.SetConfigstring( CS_PLAYERS + clientNum, "");
+
+	// coop: drop the slot's scoreboard row everywhere
+	for ( int i = 0; i < MAX_CLIENTS; i++ )
+	{
+		if ( i != clientNum && G_CoopPlayerSlot( i ) )
+		{
+			gi.SendServerCommand( i, "cstat %i \"\" 0 0 0 0", clientNum );
+		}
+	}
 
 	IIcarusInterface::GetIcarus()->DeleteIcarusID(ent->m_iIcarusID);
 

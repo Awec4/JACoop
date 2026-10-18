@@ -665,6 +665,34 @@
 		}
 		itemDef
 		{
+			name				pingBind
+			group				player
+			type				ITEM_TYPE_BIND
+			style				WINDOW_STYLE_EMPTY
+			rect				260 217 340 14
+			text				"@JACOOP_PING_TOUCHE"
+			descText			"@JACOOP_POSE_UN_MARQUEUR_OU_TU_VISES_VU_PAR_TOUS"
+			font				4
+			textscale			1
+			textalign			ITEM_ALIGN_RIGHT
+			textalignx			190
+			textaligny			0
+			forecolor			1 1 1 .82
+			cvarTest			"ui_coopOptionsTab"
+			showCvar			{ "0" }
+			visible				1
+			cvar				"coop_ping"
+			mouseEnter
+			{
+				show			highlight6
+			}
+			mouseExit
+			{
+				hide			highlight6
+			}
+		}
+		itemDef
+		{
 			name				maxPlayers
 			group				host
 			type				ITEM_TYPE_MULTI
@@ -1020,6 +1048,39 @@
 			mouseExit
 			{
 				hide			highlight10
+			}
+			action
+			{
+				play			"sound/interface/button1.wav"
+			}
+		}
+		itemDef
+		{
+			name				versus
+			group				host
+			type				ITEM_TYPE_MULTI
+			style				WINDOW_STYLE_EMPTY
+			rect				260 287 340 14
+			text				"@JACOOP_MODE_VERSUS"
+			descText			"@JACOOP_LES_INVITES_PEUVENT_PASSER_DANS_LE_CAMP"
+			font				4
+			textscale			1
+			textalign			ITEM_ALIGN_RIGHT
+			textalignx			190
+			textaligny			0
+			forecolor			1 1 1 .82
+			cvarTest			"ui_coopOptionsTab"
+			showCvar			{ "1" }
+			visible				1
+			cvar				"g_coopVersus"
+			cvarFloatList		{ "@JACOOP_NON" 0 "@JACOOP_OUI" 1 }
+			mouseEnter
+			{
+				show			highlight11
+			}
+			mouseExit
+			{
+				hide			highlight11
 			}
 			action
 			{

@@ -15,7 +15,7 @@ Encodage cp1252 (police indexee par octet) : pas d'accents dans les textes (choi
 """
 import io, os
 
-DST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'dist', 'pk3', 'ui')
+DST = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pk3', 'ui')
 # tout est blanc (JD, 23/09) : ce qui distingue un titre d'un commentaire est
 # l'opacite, plus la teinte
 GOLD = '1 1 1 1'        # texte principal, boutons
@@ -731,7 +731,9 @@ opt += prow_edit('nameField', 'player', 0, 'Pseudo :', 'name', 15, 'Ton nom, vu 
                  [('Aucun', 0), ('Leger', 50), ('Normal', 100), ('Fort', 200)], 'Retard de la camera des cinematiques chez les invites (contre les a-coups reseau).') \
     + prow_multi('fov', 'player', 4, 'Champ de vision :', 'cg_fov',
                  [('80 (normal)', 80), ('90', 90), ('100', 100), ('110', 110), ('120', 120)],
-                 'Valeur de reference en 4/3 : sur un ecran large elle est elargie toute seule, tu n as rien a compenser.')
+                 'Valeur de reference en 4/3 : sur un ecran large elle est elargie toute seule, tu n as rien a compenser.') \
+    + prow_bind('pingBind', 'player', 6, 'Ping (touche) :', 'coop_ping',
+                'Pose un marqueur ou tu vises, vu par tous (clic molette par defaut).')
 # --- HOTE
 opt += prow_multi('maxPlayers', 'host', 0, 'Joueurs max :', 'ui_coopMaxPlayers', [(str(n), n) for n in (2, 3, 4, 5, 6, 8, 10, 12, 16)], 'Nombre de places dans la partie (jusqu a 16).') \
     + prow_multi('requireReady', 'host', 1, 'Lancement :', 'g_coopRequireReady',
@@ -754,7 +756,9 @@ opt += prow_multi('maxPlayers', 'host', 0, 'Joueurs max :', 'ui_coopMaxPlayers',
     + prow_multi('ragdoll', 'host', 9, 'Ragdoll des corps :', 'g_coopRagdoll', [('Non', 0), ('Oui', 1), ('Des la mort', 2)],
                  'Les PNJ morts tombent en physique quand on les pousse, tire ou qu ils volent ; Des la mort : a chaque mort.') \
     + prow_multi('ragdollSync', 'host', 10, 'Sync ragdoll :', 'g_coopRagdollSync', [('Non', 0), ('Oui', 1)],
-                 'Envoie la pose des corps aux invites (20 fois par seconde, ~250 octets par corps) : la meme chez tous.')
+                 'Envoie la pose des corps aux invites (20 fois par seconde, ~250 octets par corps) : la meme chez tous.') \
+    + prow_multi('versus', 'host', 11, 'Mode versus :', 'g_coopVersus', [('Non', 0), ('Oui', 1)],
+                 'Les invites peuvent passer dans le camp ennemi et traquer les jedi (bouton CHANGER DE CAMP du menu F6).')
 # --- IMAGES DE MENU : onglet cache (JD, 24/09) ; ui_coopCustomSkin reste a 1, les images
 # posees dans base/gfx/jacoop/ passent toujours devant celles du mod.
 # --- RENDU MODERNE : une couche AJOUTEE ; eteinte, le jeu dessine exactement comme
@@ -863,6 +867,8 @@ ingame = '''// JACoop - menu COOPERATION en jeu (touche F6 : bind F6 "uimenu coo
                 'Etre teleporte a cote de l invite le plus proche.', 'sv_running', show=['1']) \
     + colbutton('hostButton', 270, 'OUVRIR AUX AMIS', '				uiScript		coopHost\n',
                 'Ouvrir cette partie solo aux amis : ils apparaissent a cote de toi.', 'ui_coopCanHost', show=['1']) \
+    + colbutton('versusButton', 270, 'CHANGER DE CAMP', '				uiScript		coopVersus\n',
+                'Rejoindre les ennemis et traquer les jedi, ou revenir chez les jedi.', 'ui_coopVersus', show=['1']) \
     + colbutton('optionsButton', 306, 'OPTIONS COOPERATION', '				setcvar			ui_coopOptionsFrom game ;\n				close			all ;\n				open			coopOptionsMenu\n',
                 'Pseudo, touche pour relever, joueurs a terre, joueurs max...') \
     + colbutton('npcButton', 342, 'PNJ', '				setcvar			ui_coopForceFrom game ;\n				close			all ;\n				open			coopNpcMenu\n',

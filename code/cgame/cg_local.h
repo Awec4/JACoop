@@ -306,6 +306,13 @@ typedef struct {
 
 //======================================================================
 
+// coop: on-screen chat box (matches multiplayer layout)
+#define	MAX_CHATBOX_ITEMS		5
+typedef struct chatBoxItem_s {
+	char	string[MAX_SAY_TEXT];
+	int		time;
+	int		lines;
+} chatBoxItem_t;
 
 // all cg.stepTime, cg.duckTime, cg.landTime, etc are set to cg.time when the action
 // occurs, and they will have visible effects for #define STEP_TIME or whatever msec after
@@ -512,6 +519,10 @@ Ghoul2 Insert End
 */
 	overrides_t	overrides;	//for overriding certain third-person camera properties
 
+	// coop: on-screen chat box (messagemode / "chat" server command), same idea as MP
+	chatBoxItem_t	chatItems[MAX_CHATBOX_ITEMS];
+	int				chatItemActive;
+
 } cg_t;
 
 
@@ -556,6 +567,11 @@ extern	qboolean		cg_remoteClient;	// coop: serverless remote client (dual-loaded
 extern	vmCvar_t		cg_remoteClientCvar;
 extern	vmCvar_t		cg_coopPaksGen;		// coop: engine cl_coopPaksGen, bumped when a pk3 is added / unloaded at runtime
 extern	vmCvar_t		cg_coopHud;			// coop: 1 = the JACoop HUD, 0 = the stock hud.menu
+extern	vmCvar_t		cg_coopScore;		// coop: persistent mini scoreboard; +coop_score toggles
+extern	vmCvar_t		cg_coopTags;		// coop: 1 = name + health over living teammates
+extern	vmCvar_t		cg_coopVoiceTalk;	// coop voice: talker bitmask + TX flag (written by the engine)
+extern	vmCvar_t		cg_chatBox;			// coop: ms to keep each chat line on screen (0 = off)
+extern	vmCvar_t		cg_chatBoxHeight;	// coop: bottom Y of the chat box stack
 // coop: the local player's playerState for HUD/view reads: the gentity's on the host,
 // the received snapshot's on a remote client (whose gentity client stays zeroed).
 static inline const playerState_t *CG_LocalPS( const centity_t *cent ) {
@@ -583,6 +599,13 @@ void CG_FullWidth2DEnd( void );
 float CG_FullWidth2DW( float w );
 void CG_CoopThirdPerson_f( void );
 void CG_CoopDrawDowned( void );
+void CG_CoopDrawNametags( void );	// coop: name + health over living teammates
+void CG_CoopPing_f( void );		// coop: "ping" svcmd, a teammate's waypoint marker
+void CG_CoopDrawPings( void );	// coop: draw the live waypoint pings
+void CG_CoopStats_f( void );	// coop: "cstat" svcmd, a scoreboard row
+void CG_CoopDrawScoreboard( void );	// coop: the +coop_score overlay
+void CG_ChatBox_AddString( char *chatStr );	// coop: queue a line for the on-screen chat box
+void CG_ChatBox_DrawStrings( void );		// coop: draw active chat lines
 void CG_CoopReset( void );
 void CG_CoopModelSpecChanged( int specIndex );	// coop: CS_COOP_MODELSPECS slot rewritten
 void CG_CoopEnts_f( void );

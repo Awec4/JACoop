@@ -53,6 +53,9 @@ extern int			nextHistoryLine;	// the last line in the history buffer, not masked
 extern int			historyLine;		// the line being displayed from history buffer will be <= nextHistoryLine
 extern field_t		historyEditLines[COMMAND_HISTORY];
 
+// coop: in-game chat (messagemode), same field as multiplayer
+extern field_t		chatField;
+
 void	Field_KeyDownEvent	( field_t *edit, int key );
 void	Field_CharEvent		( field_t *edit, int ch );
 void	Field_Draw			( field_t *edit, int x, int y, qboolean showCursor, qboolean noColorEscape );

@@ -1278,6 +1278,20 @@ void NPC_Begin (gentity_t *ent)
 	{
 		client->ps.stats[STAT_HEALTH] = ent->max_health = ent->health;
 	}
+	// coop: scale enemy hit points for bigger parties (g_coopEnemyHealth) and
+	// for NG+ cycles (g_coopNGPlus: +50% health per tier)
+	extern cvar_t *g_coopEnemyHealth;
+	extern cvar_t *g_coopNGPlus;
+	float coopHpScale = g_coopEnemyHealth && g_coopEnemyHealth->value > 0.0f ? g_coopEnemyHealth->value : 1.0f;
+	if ( g_coopNGPlus && g_coopNGPlus->integer > 0 )
+	{
+		coopHpScale *= 1.0f + 0.5f * g_coopNGPlus->integer;
+	}
+	if ( coopHpScale != 1.0f
+		&& ent->client->playerTeam == TEAM_ENEMY && ent->max_health > 0 )
+	{
+		ent->health = ent->max_health = client->ps.stats[STAT_HEALTH] = (int)ceilf( ent->max_health * coopHpScale );
+	}
 	ChangeWeapon( ent, ent->client->ps.weapon );//yes, again... sigh
 
 	if ( !(ent->spawnflags & SFB_STARTINSOLID) )

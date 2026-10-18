@@ -380,6 +380,7 @@ void SV_SpawnServer( const char *server, ForceReload_e eForceReload, qboolean bA
 
 	// set serverinfo visible name
 	Cvar_Set( "mapname", server );
+	SV_StatusMapStarted( server );	// coop: map timer for the site's leaderboards
 
 	Cvar_Set( "sv_mapChecksum", va("%i",checksum) );
 
@@ -479,6 +480,9 @@ void SV_Init (void) {
 	// D2: name shown in the LAN co-op browser. Default to the player's name so a
 	// freshly hosted game is identifiable without any configuration.
 	sv_hostname = Cvar_Get ("sv_hostname", Cvar_VariableString("name"), CVAR_ARCHIVE);
+	// coop: lobby password. Set before hosting; joiners must send the same
+	// value in their connect userinfo (`set password <x>`). Empty = open game.
+	sv_password = Cvar_Get ("sv_password", "", CVAR_ARCHIVE);
 	// E1: how many players may connect. Latched (fixed for the life of a running
 	// server) and clamped to [1, MAX_CLIENTS]; allocations stay MAX_CLIENTS-sized,
 	// only the connection-accept loop is bounded by this. Default 2 (co-op pair);
@@ -504,6 +508,7 @@ void SV_Init (void) {
 	sv_compress_saved_games = Cvar_Get ("sv_compress_saved_games", "1", 0);
 
 	SV_CoopTransferInit();	// coop: host -> joiner pk3 transfer cvars
+	SV_StatusInit();		// coop: website status push cvars
 
 	// Only allocated once, no point in moving it around and fragmenting
 	// create a heap for Ghoul2 to use for game side model vertex transforms used in collision detection

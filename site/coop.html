@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Co-op — AdvancedJK</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --panel: #171a21;
+    --panel-border: #262b36;
+    --text: #e8eaf0;
+    --muted: #9aa3b2;
+    --accent: #5ec5ff;
+    --online: #4ade80;
+    --offline: #6b7280;
+    --lobby: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+    min-height: 100vh;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 { font-size: 28px; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 32px; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 12px; padding: 24px;
+  }
+  .status-line { display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--offline); flex: none; }
+  .dot.on { background: var(--online); box-shadow: 0 0 8px var(--online); }
+  .dot.lobby { background: var(--lobby); box-shadow: 0 0 8px var(--lobby); }
+
+  .map-name { font-size: 24px; font-weight: 700; margin: 18px 0 2px; }
+  .map-code { color: var(--muted); font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
+  .meta { display: flex; gap: 24px; margin-top: 16px; flex-wrap: wrap; }
+  .meta .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .meta .value { font-size: 16px; margin-top: 2px; }
+  .updated { color: var(--muted); font-size: 12px; margin-top: 18px; }
+
+  .actions { display: flex; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+  button, a.btn {
+    appearance: none; border: 1px solid var(--panel-border); border-radius: 8px;
+    background: #222834; color: var(--text); padding: 12px 18px;
+    font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  button:hover, a.btn:hover { border-color: var(--accent); }
+  a.primary, button.primary { background: var(--accent); border-color: var(--accent); color: #06121c; }
+  button.copied { border-color: var(--online); color: var(--online); }
+
+  .howto { margin-top: 36px; }
+  .howto h2 { font-size: 17px; margin: 0 0 10px; }
+  .howto ol { color: var(--muted); padding-left: 20px; line-height: 1.7; margin: 0; }
+  .howto code { background: #222834; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Co-op</h1>
+  <p class="sub">The Jedi Academy single-player campaign, together. Live server status below.</p>
+
+  <div class="card" id="card">
+    <div class="status-line"><span class="dot" id="dot"></span><span id="state">Checking…</span></div>
+
+    <div id="details" class="hidden">
+      <div class="map-name" id="mapName">—</div>
+      <div class="map-code" id="mapCode"></div>
+      <div class="meta">
+        <div><div class="label">Host</div><div class="value" id="hostname">—</div></div>
+        <div><div class="label">Players</div><div class="value" id="players">—</div></div>
+      </div>
+      <div class="actions" id="joinActions">
+        <a class="btn primary" id="joinBtn" href="#">Join now</a>
+        <button id="copyBtn" type="button">Copy /connect</button>
+        <a class="btn" id="steamBtn" href="#">Steam connect</a>
+      </div>
+      <div class="updated" id="updated"></div>
+    </div>
+
+    <div id="offline" class="hidden" style="margin-top:10px;color:var(--muted)">
+      Nobody is hosting right now. Check back later — this updates automatically.
+    </div>
+  </div>
+
+  <div class="howto">
+    <h2>How to join</h2>
+    <ol>
+      <li>Install <strong>JACoop</strong> (the co-op build of AdvancedJK) and own a copy of Jedi Academy.</li>
+      <li>Click <strong>Join now</strong> — your browser asks permission, then the game opens straight into the host's lobby. (First time only: run JACoop.exe once so it registers the link handler.)</li>
+      <li>No install yet? Copy <code>/connect &lt;address&gt;</code> and paste it into the in-game console (<code>~</code>).</li>
+      <li>Everyone needs the same mod version.</li>
+    </ol>
+  </div>
+</main>
+
+<script>
+const ENDPOINT = "/api/coop-status";
+const STALE_MS = 90 * 1000;      // host pushes every ~20s; past 90s = offline
+const POLL_MS = 15 * 1000;
+
+// JA single-player campaign map codes -> display names (editable)
+const MAP_NAMES = {
+  t1_inter: "Lobby",
+  yavin1: "Yavin Jungle", yavin1b: "Yavin Temple", yavin2: "Yavin Temple",
+  t1_sour: "Merchant Rescue — Blenjeel", t1_fatal: "Droid Recovery — Tatooine",
+  t1_danger: "Emergency Assistance — Bakura", t1_rail: "Cult Investigation — Corellia",
+  t1_surprise: "Cult Investigation — Tatooine",
+  t2_rancor: "Nar Kreeta", t2_dpred: "Cloud City", t2_trip: "Nar Kreeta",
+  t2_wedge: "Kril'dor", t2_rogue: "Coruscant",
+  t3_rift: "Chandrila", t3_byss: "Byss", t3_stamp: "Mos Eisley",
+  t3_hevil: "Doomgiver Detention", t3_bounty: "Nar Shaddaa",
+  hoth2: "Echo Base — Hoth", hoth3: "Echo Base — Hoth",
+  vjun1: "Vjun — Approach", vjun2: "Bast Castle — Vjun", vjun3: "Bast Castle — Vjun",
+  taspir1: "Taspir III", taspir2: "Taspir III",
+  kor1: "Korriban", kor2: "Korriban",
+};
+
+const $ = (id) => document.getElementById(id);
+const dot = $("dot"), state = $("state"), details = $("details"), offline = $("offline");
+
+function ago(ts) {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 60) return s + "s ago";
+  return Math.round(s / 60) + "m ago";
+}
+
+async function refresh() {
+  let d = null;
+  try { d = await (await fetch(ENDPOINT, { cache: "no-store" })).json(); } catch {}
+  const live = d && d.updatedAt && (Date.now() - d.updatedAt) < STALE_MS;
+
+  if (!live) {
+    dot.className = "dot";
+    state.textContent = "Offline";
+    details.classList.add("hidden");
+    offline.classList.remove("hidden");
+    return;
+  }
+
+  offline.classList.add("hidden");
+  details.classList.remove("hidden");
+
+  const lobby = !!d.lobby;
+  dot.className = lobby ? "dot lobby" : "dot on";
+  state.textContent = lobby ? "In lobby" : "Online — playing";
+  $("hostname").textContent = d.hostname || "Host";
+  $("mapName").textContent = lobby ? "Lobby" : (MAP_NAMES[d.map] || d.map || "—");
+  $("mapCode").textContent = lobby ? "choosing the next mission" : (d.map || "");
+  $("players").textContent = (d.players ?? "?") + " / " + (d.maxplayers ?? "?");
+  $("updated").textContent = "Updated " + ago(d.updatedAt) + " · refreshes automatically";
+
+  const join = (d.join || "").trim();
+  $("joinActions").classList.toggle("hidden", !join);
+  if (join) {
+    $("joinBtn").href = "advjk://join/" + join;
+    $("steamBtn").href = "steam://connect/" + join;
+    $("copyBtn").onclick = () => {
+      navigator.clipboard.writeText("/connect " + join).then(() => {
+        const b = $("copyBtn");
+        b.textContent = "Copied!";
+        b.classList.add("copied");
+        setTimeout(() => { b.textContent = "Copy /connect"; b.classList.remove("copied"); }, 1500);
+      });
+    };
+  }
+}
+
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>

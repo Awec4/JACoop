@@ -456,6 +456,14 @@ void CL_CoopTransferFrame( void );
 void CL_CoopTransferAbort( void );
 void CL_CoopCheckPaksGen( void );
 
+//
+// cl_coopvoice.cpp (coop: push-to-talk voice)
+//
+void CL_CoopVoice_Init( void );
+void CL_CoopVoice_Shutdown( void );
+void CL_CoopVoice_Frame( int msec );
+void CL_CoopVoice_Packet( netadr_t from, msg_t *msg );
+
 //====================================================================
 
 //
@@ -465,6 +473,7 @@ void Con_DrawCharacter (int cx, int line, int num);
 
 void Con_CheckResize (void);
 void Con_Init (void);
+void Con_DrawChatField( void );	// coop: "Say:" line while KEYCATCH_MESSAGE is set
 void Con_Clear_f (void);
 void Con_ToggleConsole_f (void);
 void Con_DrawNotify (void);

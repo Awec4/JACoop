@@ -406,6 +406,23 @@ void Cmd_CompleteTxtName( char *args, int argNum ) {
 
 /*
 ================
+Con_MessageMode_f
+
+coop: open the in-game chat field (bound to Y by default), same as multiplayer.
+
+The bind key's CharEvent is already gone when this runs (binds go through Cbuf
+after the key/char events), so the field starts empty — no need to swallow the
+next character (that used to eat the first letter of the message).
+================
+*/
+void Con_MessageMode_f( void ) {
+	Field_Clear( &chatField );
+	chatField.widthInChars = 30;
+	Key_SetCatcher( Key_GetCatcher() ^ KEYCATCH_MESSAGE );
+}
+
+/*
+================
 Con_Init
 ================
 */
@@ -429,12 +446,15 @@ void Con_Init (void) {
 		Field_Clear( &historyEditLines[i] );
 		historyEditLines[i].widthInChars = g_console_field_width;
 	}
+	Field_Clear( &chatField );	// coop: chat field used by messagemode
+	chatField.widthInChars = 30;
 
 	Cmd_AddCommand ("toggleconsole", Con_ToggleConsole_f);
 	Cmd_AddCommand ("togglemenu", Con_ToggleMenu_f);
 	Cmd_AddCommand ("clear", Con_Clear_f);
 	Cmd_AddCommand ("condump", Con_Dump_f);
 	Cmd_SetCommandCompletionFunc( "condump", Cmd_CompleteTxtName );
+	Cmd_AddCommand( "messagemode", Con_MessageMode_f );	// coop: in-game chat
 
 	//Initialize values on first print
 	con.initialized = qfalse;
@@ -682,6 +702,37 @@ void Con_DrawNotify (void)
 	}
 
 	re.SetColor( NULL );
+
+	// coop: "Say:" chat line. Draw in stretch 2D so BigChar spacing stays even on
+	// widescreen (per-glyph Aspect2D was spraying letters across the screen).
+	if ( ( Key_GetCatcher() & KEYCATCH_MESSAGE ) && !( Key_GetCatcher() & KEYCATCH_UI ) )
+	{
+		const char *chattext = "Say:";
+		int skip;
+
+		re.SetAspect2D( 0 );
+		SCR_DrawBigString( 8, v, chattext, 1.0f, qfalse );
+		skip = (int)strlen( chattext ) + 1;
+		Field_BigDraw( &chatField, skip * BIGCHAR_WIDTH, v, qtrue, qtrue );
+		re.SetAspect2D( 1 );
+	}
+}
+
+/*
+================
+Con_DrawChatField
+
+coop: draw the chat field when notify is not running (e.g. empty notify)
+================
+*/
+void Con_DrawChatField( void )
+{
+	if ( !( Key_GetCatcher() & KEYCATCH_MESSAGE ) || ( Key_GetCatcher() & KEYCATCH_UI ) )
+	{
+		return;
+	}
+	// Con_DrawNotify already draws it when the console is closed; this is a
+	// spare entry point if something else needs the field alone
 }
 
 /*

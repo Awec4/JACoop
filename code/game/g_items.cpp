@@ -537,6 +537,21 @@ int Pickup_Weapon (gentity_t *ent, gentity_t *other)
 		}
 	}
 
+	if ( ent->item->giTag == WP_BLASTER_PISTOL || ent->item->giTag == WP_BRYAR_PISTOL )
+	{//picked up a pistol
+		if ( hadWeapon )
+		{//already had one, now we have dual pistols
+			other->client->dualPistols = qtrue;
+			if ( other->client->ps.weapon == ent->item->giTag )
+			{//already holding this weapon, add the second gun now
+				if ( other->weaponModel[1] <= 0 )
+				{
+					G_CreateG2AttachedWeaponModel( other, weaponData[ent->item->giTag].weaponMdl, other->handLBolt, 1 );
+				}
+			}
+		}
+	}
+
 	if ( quantity )
 	{
 		// Give ammo
@@ -646,6 +661,10 @@ int Pickup_Holocron( gentity_t *ent, gentity_t *other )
 
 	other->client->ps.forcePowerLevel[forcePower] = forceLevel;
 	other->client->ps.forcePowersKnown |= ( 1 << forcePower );
+
+	// coop: tell the lobby who found it + count toward the set reward
+	G_CoopPrintTr( -1, "print", "%s ^3a trouve un holocron !\n", "%s ^3found a holocron!\n", other->client->pers.netname );
+	G_CoopHoloPicked( other->s.number );
 
 	missionInfo_Updated = qtrue;	// Activate flashing text
 	gi.cvar_set("cg_updatedDataPadForcePower1", va("%d",forcePower+1)); // The +1 is offset in the print routine.
@@ -880,6 +899,8 @@ void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace) {
 	{
 		return;
 	}
+
+	G_CoopSharePickup( ent, other );	// coop: nearby teammates get a slice (g_coopPickupShare)
 
 	// play the normal pickup sound
 	if ( G_CoopIsPlayer( other ) && ( g_timescale->value < 1.0f || G_CoopTimeScale( &other->client->ps, qtrue ) < 1.0f ) )	// coop: or HE is sped up

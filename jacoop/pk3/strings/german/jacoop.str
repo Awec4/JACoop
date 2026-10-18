@@ -135,6 +135,10 @@ REFERENCE           CHAMP_DE_VISION
 LANG_ENGLISH        "Field of view:"
 LANG_GERMAN         "Field of view:"
 
+REFERENCE           CHANGER_DE_CAMP
+LANG_ENGLISH        "CHANGE SIDE"
+LANG_GERMAN         "CHANGE SIDE"
+
 REFERENCE           CHANGER_DE_MODELE_OU_DE_SKIN_TOUT_DE_SUI
 LANG_ENGLISH        "Change model or skin right away, even in game."
 LANG_GERMAN         "Change model or skin right away, even in game."
@@ -571,6 +575,10 @@ REFERENCE           LES_INVITES_CREENT_LEUR_PERSONNAGE_LA_PA
 LANG_ENGLISH        "The guests are creating their characters... the game starts once everyone has confirmed."
 LANG_GERMAN         "The guests are creating their characters... the game starts once everyone has confirmed."
 
+REFERENCE           LES_INVITES_PEUVENT_PASSER_DANS_LE_CAMP
+LANG_ENGLISH        "Guests can switch to the enemy side and hunt the jedi (CHANGE SIDE button in the F6 menu)."
+LANG_GERMAN         "Guests can switch to the enemy side and hunt the jedi (CHANGE SIDE button in the F6 menu)."
+
 REFERENCE           LES_JOUEURS_PEUVENT_SE_BLESSER_ET_SE_TUE
 LANG_ENGLISH        "Players can hurt and kill each other."
 LANG_GERMAN         "Players can hurt and kill each other."
@@ -686,6 +694,10 @@ LANG_GERMAN         "MISSION COMPLETE"
 REFERENCE           MODELE
 LANG_ENGLISH        "MODEL"
 LANG_GERMAN         "MODEL"
+
+REFERENCE           MODE_VERSUS
+LANG_ENGLISH        "Versus mode:"
+LANG_GERMAN         "Versus mode:"
 
 REFERENCE           MOITIE
 LANG_ENGLISH        "Half"
@@ -855,6 +867,10 @@ REFERENCE           PERSOS_VALIDES
 LANG_ENGLISH        "Characters confirmed"
 LANG_GERMAN         "Characters confirmed"
 
+REFERENCE           PING_TOUCHE
+LANG_ENGLISH        "Ping (key):"
+LANG_GERMAN         "Ping (key):"
+
 REFERENCE           PLEINE
 LANG_ENGLISH        "Full"
 LANG_GERMAN         "Full"
@@ -878,6 +894,10 @@ LANG_GERMAN         "Range beyond map:"
 REFERENCE           PORTRAIT
 LANG_ENGLISH        "PORTRAIT"
 LANG_GERMAN         "PORTRAIT"
+
+REFERENCE           POSE_UN_MARQUEUR_OU_TU_VISES_VU_PAR_TOUS
+LANG_ENGLISH        "Drop a marker where you aim, seen by everyone (middle mouse by default)."
+LANG_GERMAN         "Drop a marker where you aim, seen by everyone (middle mouse by default)."
 
 REFERENCE           POUR_JUGER_UN_EFFET_ISOLEMENT_A_REMETTRE
 LANG_ENGLISH        "To judge one effect on its own. Set it back to The game to play."
@@ -1042,6 +1062,10 @@ LANG_GERMAN         "Join a friend's game (local network or Internet address)."
 REFERENCE           REJOINDRE_LA_PARTIE_SELECTIONNEE
 LANG_ENGLISH        "Join the selected game."
 LANG_GERMAN         "Join the selected game."
+
+REFERENCE           REJOINDRE_LES_ENNEMIS_ET_TRAQUER_LES_JED
+LANG_ENGLISH        "Join the enemies and hunt the jedi, or come back to the jedi."
+LANG_GERMAN         "Join the enemies and hunt the jedi, or come back to the jedi."
 
 REFERENCE           REJOINDRE_L_HOTE
 LANG_ENGLISH        "GO TO THE HOST"

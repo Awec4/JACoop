@@ -149,7 +149,7 @@ void SV_WipeGame_f(void)
 		return;
 	}
 	SG_WipeSavegame(Cmd_Argv(1));
-//	Com_Printf("%s has been wiped\n", Cmd_Argv(1));	// wurde gelöscht in german, but we've only got one string
+//	Com_Printf("%s has been wiped\n", Cmd_Argv(1));	// wurde gelï¿½scht in german, but we've only got one string
 //	Com_Printf("Ok\n"); // no localization of this
 }
 
@@ -732,7 +732,32 @@ static void SG_WriteComment(qboolean qbAutosave, const char *psMapName)
 
 	if ( qbAutosave || !*saveGameComment)
 	{
-		Com_sprintf( sComment, sizeof(sComment), "---> %s", psMapName );
+		// coop: "---> map" told you nothing; name the save for the session,
+		// "^2map ^7| host^6, friend^6 +2" - names keep their own color codes
+		char sNames[40] = "";
+		int nExtra = 0;
+		for ( int i = 0; i < sv_maxclients->integer; i++ )
+		{
+			const client_t *cl = &svs.clients[i];
+			if ( cl->state < CS_CONNECTED || !cl->name[0] )
+				continue;
+			if ( strlen( sNames ) + strlen( cl->name ) + 4 <= sizeof( sNames ) - 1 )
+			{
+				if ( *sNames )
+					Q_strcat( sNames, sizeof( sNames ), "^6, " );
+				Q_strcat( sNames, sizeof( sNames ), cl->name );
+			}
+			else
+			{
+				nExtra++;
+			}
+		}
+		if ( nExtra )
+			Q_strcat( sNames, sizeof( sNames ), va( "^6+%d", nExtra ) );
+		if ( *sNames )
+			Com_sprintf( sComment, sizeof( sComment ), "^2%.22s ^7| %s", psMapName, sNames );
+		else
+			Com_sprintf( sComment, sizeof( sComment ), "---> %s", psMapName );
 	}
 	else
 	{

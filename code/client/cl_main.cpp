@@ -33,6 +33,11 @@ along with this program; if not, see <http://www.gnu.org/licenses/>.
 #include "../ghoul2/G2.h"
 #include "qcommon/stringed_ingame.h"
 #include "sys/sys_loadlib.h"
+#include "SDL.h"	// coop: SDL_SetClipboardText for coop_invite
+#if defined(_WIN32)
+#include <windows.h>
+#include <shellapi.h>	// coop: ShellExecuteA for records
+#endif
 #include "qcommon/ojk_saved_game.h"
 
 #define	RETRANSMIT_TIMEOUT	3000	// time between connection packet retransmits
@@ -386,6 +391,56 @@ static void CL_CoopKeys_f( void ) {
 	Com_Printf( "coop_keys: state %i catcher %i (console %i ui %i) uiFullscreen %i sensitivity %.2f cgameStarted %i cl_paused %i\n",
 		cls.state, Key_GetCatcher(), ( Key_GetCatcher() & KEYCATCH_CONSOLE ) ? 1 : 0, ( Key_GetCatcher() & KEYCATCH_UI ) ? 1 : 0,
 		_UI_IsFullscreen(), cl.cgameSensitivity, cls.cgameStarted, cl_paused->integer );
+}
+
+/*
+===================
+CL_CoopInvite_f
+
+coop: copy the session address to the clipboard. A joiner gets the host's
+address it is connected to; the host gets its LAN ip:net_port (its public
+internet address can't be discovered locally — share that by hand).
+===================
+*/
+static void CL_CoopInvite_f( void ) {
+	char	invite[64];
+
+	if ( com_sv_running->integer ) {
+		const char	*ip = NET_GetLocalIP();
+		if ( !ip ) {
+			Com_Printf( "coop_invite: no LAN address found - share your public IP instead\n" );
+			return;
+		}
+		Com_sprintf( invite, sizeof( invite ), "%s:%i", ip, Cvar_VariableIntegerValue( "net_port" ) );
+	} else if ( cls.state == CA_ACTIVE ) {
+		Q_strncpyz( invite, NET_AdrToString( clc.serverAddress ), sizeof( invite ) );
+	} else {
+		Com_Printf( "coop_invite: not in a game\n" );
+		return;
+	}
+	SDL_SetClipboardText( invite );
+	Com_Printf( "coop_invite: copied \"%s\"\n", invite );
+}
+
+/*
+===================
+CL_Records_f
+
+coop: open the site's co-op page (live host status, map records, campaign
+runs) in the default browser. Falls back to copying the URL when there's
+no way to spawn a browser (non-Windows builds).
+===================
+*/
+#define ADVJK_COOP_PAGE "https://advjksite.koevetmc.workers.dev/coop"
+static void CL_Records_f( void ) {
+#if defined(_WIN32)
+	if ( (intptr_t)ShellExecuteA( NULL, "open", ADVJK_COOP_PAGE, NULL, NULL, SW_SHOWNORMAL ) > 32 ) {
+		Com_Printf( "records: opened %s\n", ADVJK_COOP_PAGE );
+		return;
+	}
+#endif
+	SDL_SetClipboardText( ADVJK_COOP_PAGE );
+	Com_Printf( "records: copied %s - paste it in a browser\n", ADVJK_COOP_PAGE );
 }
 
 void CL_Connect_f( void ) {
@@ -1129,6 +1184,12 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 		return;
 	}
 
+	// coop: host-relayed voice chunk (binary payload follows the command line)
+	if ( !strcmp(c, "cvoice") ) {
+		CL_CoopVoice_Packet( from, msg );
+		return;
+	}
+
 
 	Com_DPrintf ("Unknown connectionless packet command.\n");
 }
@@ -1332,6 +1393,9 @@ void CL_Frame ( int msec,float fractionMsec ) {
 
 	// coop: pk3 transfer timeouts and status line
 	CL_CoopTransferFrame();
+
+	// coop: voice capture/playback pump
+	CL_CoopVoice_Frame( msec );
 
 	// send intentions now
 	CL_SendCmd();
@@ -1878,6 +1942,17 @@ void CL_Init( void ) {
 	Cvar_Get ("name", "Jaden", CVAR_USERINFO | CVAR_ARCHIVE_ND );
 #endif
 
+	// coop: password a joiner sends when connecting to a sv_password-gated
+	// host (`set password <x>` before /connect). CVAR_USERINFO so it rides
+	// in the connect userinfo. Not archived.
+	Cvar_Get ("password", "", CVAR_USERINFO );
+
+	// coop: site account link — `seta advjk_account <site username>` +
+	// `seta advjk_key <key from your site dashboard>`. Rides the connect
+	// userinfo so the host can credit runs/achievements to real accounts.
+	Cvar_Get ("advjk_account", "", CVAR_USERINFO | CVAR_ARCHIVE );
+	Cvar_Get ("advjk_key", "", CVAR_USERINFO | CVAR_ARCHIVE );
+
 #ifdef JK2_MODE
 	// this is required for savegame compatibility - not ever actually used
 	Cvar_Get ("snaps", "20", CVAR_USERINFO );
@@ -1915,6 +1990,7 @@ void CL_Init( void ) {
 	}
 	Cvar_Get( "coop_ready", "0", CVAR_USERINFO );
 	CL_CoopTransferInit();	// coop: host -> joiner pk3 transfer cvars
+	CL_CoopVoice_Init();	// coop: push-to-talk voice cvars/commands
 
 	//
 	// register our commands
@@ -1926,6 +2002,8 @@ void CL_Init( void ) {
 	Cmd_AddCommand ("vid_restart", CL_Vid_Restart_f);
 	Cmd_AddCommand ("connect", CL_Connect_f);
 	Cmd_AddCommand ("coop_keys", CL_CoopKeys_f);	// coop: where do keys and mouse go right now
+	Cmd_AddCommand ("coop_invite", CL_CoopInvite_f);	// coop: copy the session address to the clipboard
+	Cmd_AddCommand ("records", CL_Records_f);	// coop: open the stats site's co-op page in the browser
 	Cmd_AddCommand ("uiclose", Menus_CloseAll);		// coop dev: close every menu (uimenu stacks them)
 	Cmd_AddCommand ("coop_waitjoin", CL_CoopWaitJoin_f);	// coop dev: hold a test config until the joiners are in
 	Cmd_AddCommand ("coop_waitcam", CL_CoopWaitCam_f);	// coop dev: ... and until the map's cinematic is over
@@ -1991,9 +2069,12 @@ void CL_Shutdown( void ) {
 	Cmd_RemoveCommand ("ingamecinematic");
 	Cmd_RemoveCommand ("coop_waitjoin");
 	Cmd_RemoveCommand ("coop_waitcam");
+	Cmd_RemoveCommand ("coop_invite");
 	Cmd_RemoveCommand ("uimenu");
 	Cmd_RemoveCommand ("datapad");
 	Cmd_RemoveCommand ("endscreendissolve");
+
+	CL_CoopVoice_Shutdown();
 
 	Cvar_Set( "cl_running", "0" );
 

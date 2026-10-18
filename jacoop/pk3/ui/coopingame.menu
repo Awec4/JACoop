@@ -338,6 +338,40 @@
 		}
 		itemDef
 		{
+			name				versusButton
+			group				column
+			style				WINDOW_STYLE_EMPTY
+			type				ITEM_TYPE_BUTTON
+			rect				50 270 220 26
+			text				"@JACOOP_CHANGER_DE_CAMP"
+			descText			"@JACOOP_REJOINDRE_LES_ENNEMIS_ET_TRAQUER_LES_JED"
+			font				3
+			textscale			1.0
+			textaligny			0
+			textalign			ITEM_ALIGN_LEFT
+			textstyle			1
+			textalignx			8
+			forecolor			1 1 1 1
+			cvarTest			"ui_coopVersus"
+			showCvar			{ "1" }
+			visible				1
+			mouseEnter
+			{
+				show			button_glow
+				setitemrect		button_glow	30 267 260 32
+			}
+			mouseExit
+			{
+				hide			button_glow
+			}
+			action
+			{
+				play			"sound/interface/button1.wav" ;
+				uiScript		coopVersus
+			}
+		}
+		itemDef
+		{
 			name				optionsButton
 			group				column
 			style				WINDOW_STYLE_EMPTY

@@ -165,8 +165,8 @@ const float	pm_swimScale = 0.50f;
 float	pm_ladderScale = 0.7f;
 
 const float	pm_vehicleaccelerate = 36.0f;
-const float	pm_accelerate = 12.0f;
-const float	pm_airaccelerate = 4.0f;
+const float	pm_accelerate = 12.0f;		// (mp: 10)
+const float	pm_airaccelerate = 4.0f;	// (mp: 1)
 const float	pm_wateraccelerate = 4.0f;
 const float	pm_flyaccelerate = 8.0f;
 
@@ -176,6 +176,14 @@ const float	pm_flightfriction = 3.0f;
 
 //const float	pm_frictionModifier	= 3.0f;	//Used for "careful" mode (when pressing use)
 const float pm_airDecelRate = 1.35f;	//Used for air decelleration away from current movement velocity
+
+// coop: g_mpPhysics picks the multiplayer constants (codemp/bg_pmove.c).
+// Written by g_coop.cpp on the host and by cg_predict.cpp from the host's
+// CS_COOP_PHYSICS configstring on joiners, so both sides predict identically.
+qboolean	bg_mpPhysics = qfalse;
+#define PM_ACCEL			( bg_mpPhysics ? 10.0f : pm_accelerate )
+#define PM_AIRACCEL			( bg_mpPhysics ? 1.0f : pm_airaccelerate )
+#define PM_AIRDECEL			( bg_mpPhysics ? 1.0f : pm_airDecelRate )
 
 int	c_pmove = 0;
 
@@ -2958,11 +2966,11 @@ static void PM_AirMove( void ) {
 
 	if ( ( DotProduct (pm->ps->velocity, wishdir) ) < 0.0f )
 	{//Encourage deceleration away from the current velocity
-		wishspeed *= pm_airDecelRate;
+		wishspeed *= PM_AIRDECEL;
 	}
 
 	// not on ground, so little effect on velocity
-	float accelerate = pm_airaccelerate;
+	float accelerate = PM_AIRACCEL;
  	if ( pVeh && pVeh->m_pVehicleInfo->type == VH_SPEEDER )
 	{//speeders have more control in air
 		//in mid-air
@@ -3254,11 +3262,11 @@ static void PM_WalkMove( void ) {
 	}
 	else if ( ( pml.groundTrace.surfaceFlags & SURF_SLICK ) || (pm->ps->pm_flags&PMF_TIME_KNOCKBACK) || (pm->ps->pm_flags&PMF_TIME_NOFRICTION) )
 	{
-		accelerate = pm_airaccelerate;
+		accelerate = PM_AIRACCEL;
 	}
 	else
 	{
-		accelerate = pm_accelerate;
+		accelerate = PM_ACCEL;
 
 		// Wind Affects Acceleration
 		//===================================================
@@ -3453,7 +3461,7 @@ static void PM_NoclipMove( void ) {
 	wishspeed = VectorNormalize(wishdir);
 	wishspeed *= scale;
 
-	PM_Accelerate( wishdir, wishspeed, pm_accelerate );
+	PM_Accelerate( wishdir, wishspeed, PM_ACCEL );
 
 	// move
 	VectorMA (pm->ps->origin, pml.frametime, pm->ps->velocity, pm->ps->origin);
@@ -9101,6 +9109,12 @@ static void PM_FinishWeaponChange( void ) {
 			G_RemoveWeaponModels( pm->gent );
 			if (weaponData[weapon].weaponMdl[0]) {	//might be NONE, so check if it has a model
 				G_CreateG2AttachedWeaponModel( pm->gent, weaponData[weapon].weaponMdl, pm->gent->handRBolt, 0 );
+				if ( (weapon == WP_BLASTER_PISTOL || weapon == WP_BRYAR_PISTOL)
+					&& pm->gent->client
+					&& pm->gent->client->dualPistols )
+				{//dual pistols
+					G_CreateG2AttachedWeaponModel( pm->gent, weaponData[weapon].weaponMdl, pm->gent->handLBolt, 1 );
+				}
 			}
 		}
 

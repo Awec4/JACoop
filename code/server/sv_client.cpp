@@ -77,6 +77,17 @@ void SV_DirectConnect( netadr_t from ) {
 		Info_SetValueForKey( userinfo, "ip", NET_AdrToString( from ) );
 	}
 
+	// coop: password-gated hosts. Joiners send the value via
+	// `set password <x>` (a CVAR_USERINFO cvar, so it rides in userinfo).
+	// Local connects bypass so the host can never lock himself out.
+	if ( !NET_IsLocalAddress( from ) && sv_password && sv_password->string[0] ) {
+		if ( strcmp( Info_ValueForKey( userinfo, "password" ), sv_password->string ) ) {
+			NET_OutOfBandPrint( NS_SERVER, from, "print\nWrong or missing password.\n" );
+			Com_DPrintf ("    rejected connect: bad password\n");
+			return;
+		}
+	}
+
 	newcl = &temp;
 	memset (newcl, 0, sizeof(client_t));
 

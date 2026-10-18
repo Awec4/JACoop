@@ -683,7 +683,9 @@ typedef struct {
 // if none of the catchers are active, bound key strings will be executed
 #define KEYCATCH_CONSOLE	1
 #define	KEYCATCH_UI			2
+#define	KEYCATCH_MESSAGE	4	// coop: in-game chat field (messagemode), same as MP
 
+#define	MAX_SAY_TEXT		150	// coop: chat line length cap (matches MP)
 
 // sound channels
 // channel 0 never willingly overrides
@@ -830,7 +832,10 @@ Ghoul2 Insert End
 // coop: end of a mission, shared by the host with everybody (g_coop_endlevel.cpp):
 // "<phase>\t<title>\t<stats>\t<info>|<map>\t<label>\t<votes>\t<voters>|..."
 #define CS_COOP_ENDLEVEL		(CS_COOP_SOUNDSETS + MAX_COOP_SOUNDSETS)
-#define CS_MAX					(CS_COOP_ENDLEVEL + 1)
+// coop: host's movement rules ("1" = multiplayer physics), so remote client
+// prediction in cg_predict.cpp runs the same numbers as the server's game
+#define CS_COOP_PHYSICS			(CS_COOP_ENDLEVEL + 1)
+#define CS_MAX					(CS_COOP_PHYSICS + 1)
 
 #if (CS_MAX) > MAX_CONFIGSTRINGS
 #error overflow: (CS_MAX) > MAX_CONFIGSTRINGS
@@ -2462,6 +2467,7 @@ typedef struct usercmd_s {
 #define COOPF_DRAIN_AREA			( 1 << 24 )	// forceDrainEntityNum >= ENTITYNUM_WORLD (sweep, not a grab)
 #define COOPF_PUSH_LHAND			( 1 << 25 )	// ps.powerups[PW_FORCE_PUSH] running
 #define COOPF_PUSH_RHAND			( 1 << 26 )	// ps.powerups[PW_FORCE_PUSH_RHAND] running
+#define COOPF_DUAL_PISTOLS			( 1 << 27 )	// client->dualPistols - remote cgame adds the left-hand gun
 
 // coop: s.modelindex2 of a broadcast ET_THINKER the remote cgame must think for
 #define COOP_THINKER_MATRIX			1			// G_StartMatrixEffect (otherEntityNum2 = viewer, ENTITYNUM_NONE = everyone)

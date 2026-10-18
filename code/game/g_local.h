@@ -389,6 +389,7 @@ gentity_t *Drop_Item( gentity_t *ent, gitem_t *item, float angle, qboolean copyt
 void G_SpawnItem (gentity_t *ent, gitem_t *item);
 void FinishSpawningItem( gentity_t *ent );
 void	Add_Ammo (gentity_t *ent, int weapon, int count);
+int		Add_Ammo2 (gentity_t *ent, int ammoType, int count);	// coop: pickup sharing
 void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace);
 
 void ClearRegisteredItems( void );
@@ -439,12 +440,25 @@ void G_CoopResetDowned( void );
 qboolean G_CoopDownedActive( void );
 qboolean G_CoopIsDowned( const gentity_t *ent );
 qboolean G_CoopIsUp( const gentity_t *ent );
+void	G_CoopCatchupCommand( gentity_t *ent );	// coop_cometome
+void	G_CoopQChatCommand( gentity_t *ent );	// coop_qchat <n>
+void	G_CoopBroadcastStats( void );	// coop: scoreboard rows to every player
+void	G_CoopPrintScorecard( void );	// coop: end-of-map chat recap before maptransition
+void	G_CoopSimonCommand( gentity_t *ent );	// coop: simonsays — Galactic Battlegrounds cheat
+void	G_CoopWaveFrame( void );				// coop: endless wave mode (g_coopWaves)
+void	G_CoopHolocronSpawn( void );			// coop: scatter holocrons (g_coopHolocrons)
+void	G_CoopHoloPicked( int cn );				// coop: holocron pickup -> set-completion reward
+void	G_CoopSharePickup( const gentity_t *item, gentity_t *toucher );	// coop: g_coopPickupShare
 qboolean G_CoopAnyPlayerUp( void );
 void G_CoopReviveCancel( gentity_t *reviver );
 void G_CoopClearDowned( gentity_t *ent );
 qboolean G_CoopTryDown( gentity_t *targ, gentity_t *attacker, int mod, int dflags );
 int G_CoopFriendlyFireScale( const gentity_t *targ, const gentity_t *attacker );	// -1 = not a player vs player hit
 qboolean G_CoopFriendlyFireOn( const gentity_t *targ, const gentity_t *attacker );
+qboolean G_CoopVersusOn( void );	// g_coopVersus
+team_t	G_CoopSideOf( const gentity_t *ent );	// versus: which side a player fights on
+qboolean G_CoopIsVersusEnemy( const gentity_t *ent );	// versus: player on TEAM_ENEMY
+void G_CoopVersusTeamCommand( gentity_t *ent );	// coop: coop_team jedi|enemy
 void G_CoopAnnounceKill( const gentity_t *victim, const gentity_t *attacker, qboolean downed );
 void G_CoopDownedThink( gentity_t *ent, usercmd_t *ucmd );
 void G_CoopDownedFrame( void );
@@ -493,6 +507,7 @@ void G_CoopStoreState( gentity_t *ent );
 void G_CoopStoreAll( void );
 void G_CoopOnJoinerBegin( gentity_t *ent );
 void G_CoopForceCommand( gentity_t *ent );
+void G_CoopPingCommand( gentity_t *ent );	// coop: waypoint ping where the player aims
 void G_CoopStartCommand( gentity_t *ent, const char *cmd );
 int G_CoopForcePointsAvailable( const gentity_t *ent );
 void G_CoopForceGrantPoint( void );				// end of mission: one force point for everybody
@@ -836,5 +851,11 @@ void		TIMER_Remove( gentity_t *ent, const char *identifier );
 
 float NPC_GetHFOVPercentage( vec3_t spot, vec3_t from, vec3_t facing, float hFOV );
 float NPC_GetVFOVPercentage( vec3_t spot, vec3_t from, vec3_t facing, float vFOV );
+
+void	G_CoopReportDeath( const char *victim, const char *killer, int clientNum );
+void	G_CoopReportKill( int clientNum, int meansOfDeath );
+void	G_CoopResetKills( void );
+void	G_CoopTrailFrame( void );
+void	G_CoopResetTrails( void );
 
 #endif//#ifndef __G_LOCAL_H__

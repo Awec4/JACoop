@@ -3050,11 +3050,25 @@ static void CG_DrawCrosshair( vec3_t worldPoint )
 	}
 	else
 	{
-		hShader = cgs.media.crosshairShader[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ];
+		extern vmCvar_t cg_crosshairDot;
+		if ( cg_crosshairDot.integer > 0 )
+		{
+			// coop: plain dot crosshair — cg_crosshairDot sets the size (in 640x480 units)
+			float d = (float)cg_crosshairDot.integer;
+			if ( worldAnchored )
+				d = CG_FullWidth2DW( d );
+			cgi_R_DrawStretchPic( x + cg.refdef.x + 0.5f * (640 - d),
+				y + cg.refdef.y + 0.5f * (480 - d),
+				d, d, 0, 0, 1, 1, cgs.media.whiteShader );
+		}
+		else
+		{
+			hShader = cgs.media.crosshairShader[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ];
 
-		cgi_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (640 - cw),
-			y + cg.refdef.y + 0.5 * (480 - ch),
-			cw, ch, 0, 0, 1, 1, hShader );
+			cgi_R_DrawStretchPic( x + cg.refdef.x + 0.5 * (640 - cw),
+				y + cg.refdef.y + 0.5 * (480 - ch),
+				cw, ch, 0, 0, 1, 1, hShader );
+		}
 	}
 
 	if ( cg.forceCrosshairStartTime && cg_crosshairForceHint.integer ) // drawing extra bits
@@ -3554,46 +3568,56 @@ static void CG_DrawCrosshairNames( void )
 }
 
 //--------------------------------------------------------------
+static qboolean CG_IsDurationPower( int power )
+{
+	return (qboolean)( power == FP_HEAL || power == FP_SPEED || power == FP_TELEPATHY
+		|| power == FP_RAGE || power == FP_PROTECT || power == FP_ABSORB || power == FP_SEE );
+}
+
 static void CG_DrawActivePowers(void)
 //--------------------------------------------------------------
 {
-	int icon_size = 40;
-	int startx = icon_size*2+16;
-	int starty = SCREEN_HEIGHT - icon_size*2;
-
-	int endx = icon_size;
-	int endy = icon_size;
+	// coop HUD: a slim row just above the weapon icon, bottom-left. Stock HUD:
+	// Raven's original spot (its cluster leaves that strip free).
+	int icon_size, startx, starty;
+	if ( cg_coopHud.integer )
+	{
+		icon_size = 26;
+		startx = COOP_HUD_MARGIN;
+		starty = SCREEN_HEIGHT - 96;
+	}
+	else
+	{
+		icon_size = 40;
+		startx = icon_size*2+16;
+		starty = SCREEN_HEIGHT - icon_size*2;
+	}
+	const int x0 = startx;
 
 	if (cg.zoomMode)
 	{ //don't display over zoom mask
 		return;
 	}
 
-	/*
 	//draw icon for duration powers so we know what powers are active cuttently
-	int i = 0;
-	while (i < NUM_FORCE_POWERS)
+	for ( int i = 0; i < NUM_FORCE_POWERS; i++ )
 	{
-		if ((cg.snap->ps.forcePowersActive & (1 << forcePowerSorted[i])) &&
-			CG_IsDurationPower(forcePowerSorted[i]))
+		if ( ( cg.snap->ps.forcePowersActive & ( 1 << i ) ) && CG_IsDurationPower( i ) && force_icons[i] )
 		{
-			CG_DrawPic( startx, starty, endx, endy, cgs.media.forcePowerIcons[forcePowerSorted[i]]);
-			startx += (icon_size+2); //+2 for spacing
-			if ((startx+icon_size) >= SCREEN_WIDTH-80)
+			CG_DrawPic( startx, starty, icon_size, icon_size, force_icons[i] );
+			startx += ( icon_size + 2 ); //+2 for spacing
+			if ( ( startx + icon_size ) >= SCREEN_WIDTH - 80 )
 			{
-				startx = icon_size*2+16;
-				starty += (icon_size+2);
+				startx = x0;
+				starty += ( icon_size + 2 );
 			}
 		}
-
-		i++;
 	}
-	*/
 
 	//additionally, draw an icon force force rage recovery
 	if (cg.snap->ps.forceRageRecoveryTime > cg.time)
 	{
-		CG_DrawPic( startx, starty, endx, endy, cgs.media.rageRecShader);
+		CG_DrawPic( startx, starty, icon_size, icon_size, cgs.media.rageRecShader);
 	}
 }
 
@@ -3811,23 +3835,56 @@ static float CG_DrawFPS( float y ) {
 CG_DrawTimer
 =================
 */
+static int s_timerBase = 0; // coop: cg.time when this map's frames started
+
 static float CG_DrawTimer( float y ) {
 	char		*s;
 	int			w;
-	int			mins, seconds, tens;
+	int			mins, seconds, tens, msec;
 
-	seconds = cg.time / 1000;
+	if ( !s_timerBase || s_timerBase > cg.time )
+	{
+		s_timerBase = cg.time; // first frame of this level anchors the run clock
+	}
+	msec = cg.time - s_timerBase;
+	seconds = msec / 1000;
 	mins = seconds / 60;
 	seconds -= mins * 60;
 	tens = seconds / 10;
 	seconds -= tens * 10;
 
-	s = va( "%i:%i%i", mins, tens, seconds );
+	// cg_drawTimer 1 = m:ss.t (precision), 2 = plain m:ss
+	if ( cg_drawTimer.integer == 1 )
+	{
+		s = va( "%i:%i%i.%i", mins, tens, seconds, ( msec % 1000 ) / 100 );
+	}
+	else
+	{
+		s = va( "%i:%i%i", mins, tens, seconds );
+	}
 
 	w = cgi_R_Font_StrLenPixels(s, cgs.media.qhFontMedium, 1.0f);
 	cgi_R_Font_DrawString(635 - w, y+2, s, colorTable[CT_LTGOLD1], cgs.media.qhFontMedium, -1, 1.0f);
 
 	return y + BIGCHAR_HEIGHT + 10;
+}
+
+/*
+=================
+CG_DrawSpeedometer — coop: u/s velocity readout for strafe runners
+=================
+*/
+static float CG_DrawSpeedometer( float y ) {
+	if ( !cg.snap )
+	{
+		return y;
+	}
+	const vec3_t &v = cg.snap->ps.velocity;
+	int speed = (int)sqrtf( v[0]*v[0] + v[1]*v[1] + v[2]*v[2] );
+	char *s = va( "%i u/s", speed );
+	int w = cgi_R_Font_StrLenPixels( s, cgs.media.qhFontMedium, 1.0f );
+	cgi_R_Font_DrawString( 320 - w/2, 452, s, colorTable[CT_CYAN], cgs.media.qhFontMedium, -1, 1.0f );
+	return y;
 }
 
 
@@ -4261,6 +4318,97 @@ static void CG_Draw2DScreenTints( void )
 		CG_FillRect( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, hcolor  );
 	}
 }
+
+/*
+=================
+CG_ChatBox_AddString / CG_ChatBox_DrawStrings
+
+coop: on-screen chat history (messagemode / "chat" server command), like multiplayer
+=================
+*/
+#define	CHATBOX_FONT_HEIGHT	20
+
+void CG_ChatBox_AddString( char *chatStr )
+{
+	chatBoxItem_t	*chat;
+
+	if ( cg_chatBox.integer <= 0 || !chatStr || !chatStr[0] )
+	{
+		return;
+	}
+
+	chat = &cg.chatItems[cg.chatItemActive];
+	memset( chat, 0, sizeof( *chat ) );
+	Q_strncpyz( chat->string, chatStr, sizeof( chat->string ) );
+	chat->time = cg.time + cg_chatBox.integer;
+	chat->lines = 1;	// Font_DrawString truncates via iMaxPixelWidth; no manual wrap
+
+	cg.chatItemActive++;
+	if ( cg.chatItemActive >= MAX_CHATBOX_ITEMS )
+	{
+		cg.chatItemActive = 0;
+	}
+}
+
+void CG_ChatBox_DrawStrings( void )
+{
+	int		i;
+	int		x = 8;	// left column
+	float	y = (float)cg_chatBoxHeight.integer;
+	float	fontScale = 0.65f;
+	float	lineH = CHATBOX_FONT_HEIGHT * fontScale;
+	int		linesToDraw = 0;
+	chatBoxItem_t *drawThese[MAX_CHATBOX_ITEMS];
+	int		numToDraw = 0;
+
+	if ( !cg_chatBox.integer )
+	{
+		return;
+	}
+
+	memset( drawThese, 0, sizeof( drawThese ) );
+	for ( i = 0; i < MAX_CHATBOX_ITEMS; i++ )
+	{
+		if ( cg.chatItems[i].time >= cg.time && cg.chatItems[i].string[0] )
+		{
+			int check;
+			int insertionPoint = numToDraw;
+
+			for ( check = numToDraw - 1; check >= 0; check-- )
+			{
+				if ( drawThese[check] && cg.chatItems[i].time < drawThese[check]->time )
+				{
+					insertionPoint = check;
+				}
+			}
+			if ( insertionPoint < numToDraw )
+			{
+				memmove( &drawThese[insertionPoint + 1], &drawThese[insertionPoint],
+					( numToDraw - insertionPoint ) * sizeof( drawThese[0] ) );
+			}
+			drawThese[insertionPoint] = &cg.chatItems[i];
+			numToDraw++;
+			linesToDraw += ( cg.chatItems[i].lines > 0 ) ? cg.chatItems[i].lines : 1;
+		}
+	}
+
+	if ( !numToDraw )
+	{
+		return;
+	}
+
+	y -= lineH * linesToDraw;
+	// coop: stretch 2D keeps every line on the left without changing HUD aspect rules
+	cgi_R_SetAspect2D( 0 );
+	for ( i = 0; i < numToDraw; i++ )
+	{
+		cgi_R_Font_DrawString( x, (int)y, drawThese[i]->string, colorTable[CT_WHITE],
+			cgs.media.qhFontSmall, 620, fontScale );
+		y += lineH * ( ( drawThese[i]->lines > 0 ) ? drawThese[i]->lines : 1 );
+	}
+	cgi_R_SetAspect2D( 1 );
+}
+
 /*
 =================
 CG_Draw2D
@@ -4393,12 +4541,26 @@ static void CG_Draw2D( void )
 	if (cg_drawTimer.integer) {
 		y=CG_DrawTimer(y);
 	}
+	{
+		extern vmCvar_t cg_speedometer;
+		if ( cg_speedometer.integer ) {
+			y=CG_DrawSpeedometer(y);
+		}
+	}
 
 	// don't draw center string if scoreboard is up
 	if ( !CG_DrawScoreboard() ) {
 		CG_DrawCenterString();
 		CG_CoopDrawDowned();	// coop: downed / revive overlay and teammate markers
+		CG_CoopDrawPings();		// coop: teammate waypoint pings
+		CG_CoopDrawNametags();	// coop: name + health over living teammates
+		if ( cg_coopScore.integer )
+		{
+			CG_CoopDrawScoreboard();	// coop: +coop_score held
+		}
 	}
+
+	CG_ChatBox_DrawStrings();	// coop: in-game chat box (always on top of HUD)
 
 /*	if (cg.showInformation)
 	{

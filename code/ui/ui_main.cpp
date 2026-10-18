@@ -1946,14 +1946,18 @@ static int CreateNextSaveName(char *fileName)
 {
 	int i;
 
-	// Loop through all the save games and look for the first open name
+	// Loop through all the save games and look for the first open name.
+	// coop: name slots after the map being saved (hoth2_03) instead of the
+	// anonymous jedi_03 - makes the saves/ folder readable too.
+	char info[MAX_INFO_STRING];
+	ui.GetConfigString( CS_SERVERINFO, info, sizeof( info ) );
+	const char *psMap = Info_ValueForKey( info, "mapname" );
+	char sBase[32];
+	Q_strncpyz( sBase, *psMap ? psMap : "jedi", sizeof( sBase ) );
+
 	for (i=0;i<MAX_SAVELOADFILES;i++)
 	{
-#ifdef JK2_MODE
-		Com_sprintf( fileName, MAX_SAVELOADNAME, "jkii%02d", i );
-#else
-		Com_sprintf( fileName, MAX_SAVELOADNAME, "jedi_%02d", i );
-#endif
+		Com_sprintf( fileName, MAX_SAVELOADNAME, "%s_%02d", sBase, i );
 
 		if (!ui.SG_GetSaveGameComment(fileName, NULL, NULL))
 		{
@@ -2048,6 +2052,17 @@ static qboolean UI_RunMenuScript ( const char **args )
 				trap_Key_ClearStates();
 				Cvar_Set( "cl_paused", "0" );
 			}
+			return qtrue;
+		}
+		if ( !Q_stricmp( name, "coopVersus" ) )
+		{
+			// Joiner, versus mode: swap sides, and go back to the game. The server
+			// decides what "toggle" means (it knows our current side).
+			trap_Key_SetCatcher( trap_Key_GetCatcher() & ~KEYCATCH_UI );
+			trap_Key_ClearStates();
+			Cvar_Set( "cl_paused", "0" );
+			Menus_CloseAll();
+			ui.Cmd_ExecuteText( EXEC_APPEND, "cmd coop_team toggle\n" );
 			return qtrue;
 		}
 		if ( !Q_stricmp( name, "coopSaberInit" ) )
@@ -2887,6 +2902,11 @@ static qboolean UI_RunMenuScript ( const char **args )
 			UI_CoopLobbyState();
 			// F6 page: a solo game not yet opened to friends can be (OUVRIR AUX AMIS)
 			Cvar_Set( "ui_coopCanHost", ( com_sv_running && com_sv_running->integer && !Cvar_VariableIntegerValue( "net_enabled" ) ) ? "1" : "0" );
+			// versus: the CHANGER DE CAMP button only exists for a joiner while the host allows it
+			char	info[MAX_INFO_STRING];
+			ui.GetConfigString( CS_SERVERINFO, info, sizeof( info ) );
+			Cvar_Set( "ui_coopVersus", ( atoi( Info_ValueForKey( info, "g_coopVersus" ) ) > 0
+				&& !( com_sv_running && com_sv_running->integer ) ) ? "1" : "0" );
 		}
 		else if ( Q_stricmp( name, "coopTeleport" ) == 0 )
 		{

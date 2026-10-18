@@ -3027,7 +3027,9 @@ void CG_MissileHitWall( centity_t *cent, int weapon, vec3_t origin, vec3_t dir, 
 		break;
 
 	case WP_TRIP_MINE:
-		theFxScheduler.PlayEffect( "tripmine/explosion", origin, dir );
+		// same name CG_RegisterWeapon stored ("tripMine/explosion"); the
+		// scheduler matches case, so "tripmine/..." never played for a joiner
+		theFxScheduler.PlayEffect( "tripMine/explosion", origin, dir );
 		break;
 
 	case WP_DET_PACK:
@@ -3153,7 +3155,7 @@ void CG_MissileHitPlayer( centity_t *cent, int weapon, vec3_t origin, vec3_t dir
 		break;
 
 	case WP_TRIP_MINE:
-		theFxScheduler.PlayEffect( "tripmine/explosion", origin, dir );
+		theFxScheduler.PlayEffect( "tripMine/explosion", origin, dir );
 		break;
 
 	case WP_DET_PACK:

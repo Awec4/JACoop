@@ -779,7 +779,32 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 	memset( &level, 0, sizeof( level ) );
 	level.time = levelTime;
 	G_CoopLobbyInit();	// coop: lobby map? fresh campaign?
+	G_CoopResetKills();	// coop: fresh map, fresh kill tally
+	G_CoopResetTrails();	// coop: fresh map, fresh trail buffers
 	G_CoopEndLevelInit();	// coop: nothing of the previous mission's end-of-level flow survives
+	{
+		// coop: NG+ cycles (g_coopNGPlus) — tell everyone how hard this run is
+		extern cvar_t *g_coopNGPlus;
+		if ( g_coopNGPlus && g_coopNGPlus->integer > 0 )
+		{
+			gi.SendServerCommand( -1, va( "print \"^3NEW GAME+ %i — enemies are stronger.\n\"", g_coopNGPlus->integer ) );
+		}
+
+		// coop: last map's split time (engine stashed it when posting the run)
+		{
+			char split[64];
+			gi.Cvar_VariableStringBuffer( "sv_coopLastSplit", split, sizeof( split ) );
+			if ( split[0] )
+			{
+				char lastMap[32]; int secs = 0;
+				if ( sscanf( split, "%31[^,],%i", lastMap, &secs ) == 2 )
+				{
+					gi.SendServerCommand( -1, va( "print \"^5Split: ^7%s — %i:%02i\n\"", lastMap, secs / 60, secs % 60 ) );
+				}
+				gi.cvar_set( "sv_coopLastSplit", "" );
+			}
+		}
+	}
 	level.globalTime = globalTime;
 	Q_strncpyz( level.mapname, mapname, sizeof(level.mapname) );
 	if ( spawntarget != NULL && spawntarget[0] )
@@ -837,6 +862,8 @@ void InitGame(  const char *mapname, const char *spawntarget, int checkSum, cons
 
 	// general initialization
 	G_FindTeams();
+
+	G_CoopHolocronSpawn();	// coop: scatter holocron pickups when g_coopHolocrons > 0
 
 //	SaveRegisteredItems();
 
@@ -2166,6 +2193,12 @@ void G_RunFrame( int levelTime ) {
 
 	G_CoopDownedFrame();	// coop: bleed-out clocks, everyone-down flow
 	G_CoopRunRespawns();	// coop: bring dead players back beside a teammate
+	G_CoopTrailFrame();	// coop: sample opt-in player positions for the site's route map
+	G_CoopWaveFrame();		// coop: endless waves when g_coopWaves is on
+	{
+		extern void G_CoopPhysicsFrame( void );
+		G_CoopPhysicsFrame();	// coop: g_mpPhysics -> bg_mpPhysics + CS_COOP_PHYSICS
+	}
 	{
 		extern void G_CoopSaberWatch( void );
 		G_CoopSaberWatch();	// coop: note the moment a player's saber goes away
@@ -2446,4 +2479,163 @@ void PrintEntClassname( int gentNum )
 IGhoul2InfoArray &TheGameGhoul2InfoArray()
 {
 	return gi.TheGhoul2InfoArray();
+}
+
+/*
+================
+G_CoopReportDeath
+
+Writes "seq|victim|killer" into the sv_coopDeath cvar — the engine's
+status code polls it and posts each player death to the site feed.
+================
+*/
+void G_CoopReportDeath( const char *victim, const char *killer, int clientNum ) {
+	static int seq = 0;
+	char ui[MAX_INFO_STRING] = "";
+	const char *acct = "", *key = "";
+	if ( clientNum >= 0 && clientNum < MAX_CLIENTS ) {
+		gi.GetUserinfo( clientNum, ui, sizeof( ui ) );
+		acct = Info_ValueForKey( ui, "advjk_account" );
+		key = Info_ValueForKey( ui, "advjk_key" );
+	}
+	gi.cvar_set( "sv_coopDeath", va( "%i|%s|%s|%s|%s", ++seq,
+		victim ? victim : "?", killer ? killer : "world", acct, key ) );
+}
+
+/*
+================
+G_CoopReportKill / G_CoopResetKills
+
+Per-map NPC kill tally: coopKillTally[client][MOD] counts this map's
+kills per weapon. Each kill rewrites the sv_coopKills cvar as
+"cn,mod,count;cn,mod,count" triples — the engine reads it when it posts
+the completed-map time and fills in names/accounts from the client list.
+================
+*/
+static int coopKillTally[MAX_CLIENTS][NUM_MODS];
+
+void G_CoopResetKills( void ) {
+	memset( coopKillTally, 0, sizeof( coopKillTally ) );
+	gi.cvar_set( "sv_coopKills", "" );
+}
+
+void G_CoopReportKill( int clientNum, int meansOfDeath ) {
+	int		i, m, off = 0;
+	char	buf[1024];
+
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS ||
+		meansOfDeath <= 0 || meansOfDeath >= NUM_MODS ) {
+		return;
+	}
+	coopKillTally[clientNum][meansOfDeath]++;
+	buf[0] = 0;
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		for ( m = 1; m < NUM_MODS; m++ ) {
+			if ( coopKillTally[i][m] > 0 && off < (int)sizeof( buf ) - 24 ) {
+				off += Com_sprintf( buf + off, sizeof( buf ) - off,
+					"%s%d,%d,%d", off ? ";" : "", i, m, coopKillTally[i][m] );
+			}
+		}
+	}
+	gi.cvar_set( "sv_coopKills", buf );
+}
+
+/*
+================
+G_CoopTrailFrame / G_CoopResetTrails
+
+Opt-in movement trail: a player with "advjk_trail" = 1 in their userinfo
+gets their origin sampled every ~450ms. Points stage per client and
+flush through sv_coopTrail as "cn|x,y,z,x,y,z;cn|x,y,z" — under the
+1KB cvar limit. The engine polls the cvar each frame, appends the new
+points to its own buffers, and posts them when the map completes.
+================
+*/
+static char coopTrailPending[MAX_CLIENTS][768];
+static int coopTrailNext[MAX_CLIENTS];
+
+void G_CoopResetTrails( void ) {
+	memset( coopTrailPending, 0, sizeof( coopTrailPending ) );
+	memset( coopTrailNext, 0, sizeof( coopTrailNext ) );
+	gi.cvar_set( "sv_coopTrail", "" );
+}
+
+static void G_CoopTrailFlush( void ) {
+	char	buf[1000];
+	int		i, off = 0;
+
+	buf[0] = 0;
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		const char *p = coopTrailPending[i];
+		int		need;
+		if ( !p[0] ) {
+			continue;
+		}
+		need = strlen( p ) + 4;
+		if ( off + need >= (int)sizeof( buf ) ) {
+			break;	// next flush catches the rest
+		}
+		off += Com_sprintf( buf + off, sizeof( buf ) - off,
+			"%s%d|%s", off ? ";" : "", i, p );
+		coopTrailPending[i][0] = 0;
+	}
+	if ( off > 0 ) {
+		gi.cvar_set( "sv_coopTrail", buf );
+	}
+}
+
+void G_CoopTrailFrame( void ) {
+	static int nextFlush = 0;
+	int		i;
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		gentity_t	*ent = &g_entities[i];
+		char		ui[MAX_INFO_STRING];
+		int			len;
+
+		if ( !G_CoopIsPlayer( ent ) || level.time < coopTrailNext[i] ) {
+			continue;
+		}
+		coopTrailNext[i] = level.time + 450;
+		gi.GetUserinfo( i, ui, sizeof( ui ) );
+		if ( !atoi( Info_ValueForKey( ui, "advjk_trail" ) ) ) {
+			continue;	// opt-in only
+		}
+		len = strlen( coopTrailPending[i] );
+		if ( len < (int)sizeof( coopTrailPending[i] ) - 40 ) {
+			Com_sprintf( coopTrailPending[i] + len, sizeof( coopTrailPending[i] ) - len,
+				"%s%d,%d,%d", len ? "," : "",
+				(int)ent->currentOrigin[0], (int)ent->currentOrigin[1],
+				(int)ent->currentOrigin[2] );
+		}
+	}
+
+	if ( level.time >= nextFlush ) {
+		nextFlush = level.time + 400;
+		G_CoopTrailFlush();
+
+		// coop: live positions for the site's map tracker — same opt-in rule:
+		// "cn|x,y;cn|x,y" with each player's freshest sample
+		{
+			char live[640]; int loff = 0;
+			live[0] = 0;
+			for ( i = 0; i < MAX_CLIENTS; i++ ) {
+				gentity_t	*ent = &g_entities[i];
+				char		ui[MAX_INFO_STRING];
+				if ( !G_CoopIsPlayer( ent ) ) {
+					continue;
+				}
+				gi.GetUserinfo( i, ui, sizeof( ui ) );
+				if ( !atoi( Info_ValueForKey( ui, "advjk_trail" ) ) ) {
+					continue;
+				}
+				if ( loff < (int)sizeof( live ) - 40 ) {
+					loff += Com_sprintf( live + loff, sizeof( live ) - loff,
+						"%s%d|%d,%d", loff ? ";" : "", i,
+						(int)ent->currentOrigin[0], (int)ent->currentOrigin[1] );
+				}
+			}
+			gi.cvar_set( "sv_coopLive", live );
+		}
+	}
 }
