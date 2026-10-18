@@ -5277,7 +5277,9 @@ extern cvar_t	*g_skippingcin;
 	}
 
 	//NEED to do this every frame, since these overrides do not go into the save/load data
-	if ( ent->client && ent->s.m_iVehicleNum != 0 && G_CoopIsPlayer( ent ) && !MatrixMode)
+	// coop: cg.overrides is the HOST's camera. Only apply a vehicle override when the
+	// HOST is the rider; a joiner's vehicle used to overwrite it every frame (shake).
+	if ( ent->client && ent->s.number == 0 && ent->s.m_iVehicleNum != 0 && !MatrixMode)
 	{//FIXME: extern and read from g_vehicleInfo?
 		Vehicle_t *pPlayerVeh = ent->owner->m_pVehicle;
 		if ( pPlayerVeh && pPlayerVeh->m_pVehicleInfo->cameraOverride )
@@ -5334,8 +5336,8 @@ extern cvar_t	*g_skippingcin;
 			}
 		}
 	}
-	else if ( client->ps.eFlags&EF_IN_ATST )
-	{
+	else if ( ent->s.number == 0 && ( client->ps.eFlags & EF_IN_ATST ) )
+	{// coop: the host's camera only (a joiner's AT-ST must not move the host's view)
 		cg.overrides.active |= (CG_OVERRIDE_3RD_PERSON_RNG|CG_OVERRIDE_3RD_PERSON_POF|CG_OVERRIDE_3RD_PERSON_VOF);
 		cg.overrides.thirdPersonRange = 240;
 		if ( cg_thirdPersonAutoAlpha.integer )

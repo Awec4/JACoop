@@ -464,6 +464,7 @@ void G_CoopDownedThink( gentity_t *ent, usercmd_t *ucmd );
 void G_CoopDownedFrame( void );
 void G_CoopReloadCheckpoint( void );
 qboolean G_CoopDeferAutosave( void );
+void G_CoopWriteAutosave( void );
 qboolean CanUseInfrontOf( gentity_t *ent );	// g_utils.cpp
 extern cvar_t *g_coopDowned, *g_coopRespawnDelay, *g_coopFriendlyFire;
 const char *G_CoopPlayerVar( const gentity_t *ent, const char *key, const cvar_t *hostCvar );

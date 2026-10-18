@@ -522,9 +522,13 @@ int Pickup_Weapon (gentity_t *ent, gentity_t *other)
 		{//player picking up saber
 			other->client->ps.weapon = WP_SABER;
 			other->client->ps.weaponstate = WEAPON_RAISING;
-			if ( other->s.number < MAX_CLIENTS )
+			if ( other->s.number == 0 )
 			{//make sure the cgame-side knows this
 				CG_ChangeWeapon( WP_SABER );
+			}
+			else if ( other->s.number < MAX_CLIENTS )
+			{// coop: a joiner's cgame is remote - tell it, do not grab the host's weapon
+				G_CoopChangeWeapon( other, WP_SABER );
 			}
 			else
 			{//make sure the cgame-side knows this
@@ -908,8 +912,12 @@ void Touch_Item (gentity_t *ent, gentity_t *other, trace_t *trace) {
 extern void CG_ItemPickup( int itemNum, qboolean bHadItem );
 		// but we're SP so we'll cheat
 		G_CoopSoundPath( NULL, other->s.number, CHAN_AUTO, ent->item->pickup_sound );	// coop: the picking player may be remote
-		// show icon and name on status bar
-		CG_ItemPickup( ent->s.modelindex, bHadWeapon );
+		// show icon and name on status bar - CG_* talks to the HOST's cgame, a
+		// remote picker's HUD is driven by its own prediction (CG_TouchItem)
+		if ( other->s.number == 0 )
+		{
+			CG_ItemPickup( ent->s.modelindex, bHadWeapon );
+		}
 	}
 	else
 	{

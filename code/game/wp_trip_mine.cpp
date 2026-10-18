@@ -212,7 +212,7 @@ void CreateLaserTrap( gentity_t *laserTrap, vec3_t start, gentity_t *owner )
 
 	laserTrap->s.radius = 60;
 	VectorSet( laserTrap->s.modelScale, 1.0f, 1.0f, 1.0f );
-	// coop: the host's ghoul2 never travels. A joiner builds the mine from
+// coop: the host's ghoul2 never travels. A joiner builds the mine from
 	// s.modelindex (CG_CoopEnsureG2Model). With that index at 0, CG_General
 	// returns before the laser, so the beam and the glow never appear.
 	laserTrap->s.modelindex = G_ModelIndex( weaponData[WP_TRIP_MINE].missileMdl );

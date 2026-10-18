@@ -3532,14 +3532,22 @@ static void G_CoopRunDeferredAutosave( void )
 	{
 		return;
 	}
-	const gentity_t *host = &g_entities[0];
-	if ( !G_CoopIsUp( host ) || G_CoopRespawnPending( host ) )
-	{
+	G_CoopWriteAutosave();
+}
+
+// Write the checkpoint now, but only if the host is really up. The state is
+// re-checked here, on the frame the save command is actually queued, so a host
+// who died between the trigger and the write never reaches SV_SaveGame_f's
+// "Can't savegame while dead" test (and never loses the checkpoint to it).
+void G_CoopWriteAutosave( void )
+{
+	if ( G_CoopDeferAutosave() )
+	{	// host still on the ground: keep coopPendingAutosave, retried every frame
 		return;
 	}
 	coopPendingAutosave = qfalse;
-	gi.Printf( "coop: writing the deferred autosave\n" );
-	gi.SendConsoleCommand( "wait 2;save auto\n" );
+	gi.Printf( "coop: writing the autosave\n" );
+	gi.SendConsoleCommand( "save auto\n" );
 }
 
 // the host reloads the last checkpoint (all-down screen, or its button)

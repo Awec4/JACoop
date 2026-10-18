@@ -1220,7 +1220,16 @@ void CG_CoopSyncCharacter( centity_t *cent )
 	gent->s.m_iVehicleNum = s->m_iVehicleNum;
 	if ( gent->client->NPC_class != CLASS_VEHICLE )
 	{
-		gent->owner = ( s->m_iVehicleNum > 0 && s->m_iVehicleNum < ENTITYNUM_WORLD ) ? &g_entities[s->m_iVehicleNum] : NULL;
+		if ( s->eFlags & EF_LOCKED_TO_WEAPON )
+		{	// coop: on an emplaced gun / E-Web, CG_CoopSyncGun owns this link
+			// (owner = the gun) and CG_Player's chair code + CG_RunEmplacedWeapon
+			// read it. m_iVehicleNum is 0 here, so the vehicle branch below would
+			// otherwise clear the gun every frame and leave the joiner at 0,0,0.
+		}
+		else
+		{
+			gent->owner = ( s->m_iVehicleNum > 0 && s->m_iVehicleNum < ENTITYNUM_WORLD ) ? &g_entities[s->m_iVehicleNum] : NULL;
+		}
 	}
 	else if ( gent->m_pVehicle )
 	{
@@ -2170,12 +2179,11 @@ void CG_CoopSelectWeapon_f( void )
 	{
 		return;
 	}
-	if ( wp > WP_NONE && cg.snap && !( cg.snap->ps.stats[STAT_WEAPONS] & ( 1 << wp ) ) )
-	{	// we do not own it: selecting it would leave the cgame pointing at a
-		// weapon the host will never hand over, and the usercmd would keep
-		// asking for it forever (CG_ChangeWeapon makes the same check)
-		return;
-	}
+	// coop: the host only sends "wp" for a weapon we own (G_CoopChangeWeapon),
+	// and it grants the saber in the same server frame it sends the command.
+	// Re-checking ownership against cg.snap here drops that hand-off because
+	// the snapshot still lags one packet behind, which left joiners unable to
+	// switch to the saber the host had just given them.
 	cg.weaponSelect = wp;
 	cg.weaponSelectTime = cg.time;
 }

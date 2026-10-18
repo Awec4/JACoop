@@ -517,7 +517,8 @@ void target_kill_use( gentity_t *self, gentity_t *other, gentity_t *activator ) 
 	if ( self->spawnflags & 1 )
 	{//falling death
 		G_Damage ( activator, NULL, NULL, NULL, NULL, 100000, DAMAGE_NO_PROTECTION, MOD_FALLING );
-		G_CoopShareKill( activator, MOD_FALLING, qfalse );
+		// coop: an environmental fall kills only the player who fell; sharing it
+		// used to take the whole party down for one player's pit death
 		if ( G_CoopIsPlayer( activator ) && activator->health <= 0 )
 		{	// coop: the fade belongs to the player who fell
 			vec4_t	src = {0,0,0,0}, dst = {0,0,0,1};
@@ -1251,11 +1252,10 @@ void target_autosave_use(gentity_t *self, gentity_t *other, gentity_t *activator
 	//gi.SendServerCommand( NULL, "cp @SP_INGAME_CHECKPOINT" );
 	CG_CenterPrint( "@SP_INGAME_CHECKPOINT", SCREEN_HEIGHT * 0.25 );	//jump the network
 
-	if ( G_CoopDeferAutosave() )
-	{	// coop: the host is on the ground, the checkpoint is written once it is up again
-		return;
-	}
-	gi.SendConsoleCommand( "wait 2;save auto\n" );
+	// coop: re-checks the host on the frame the save is queued; a host who is
+	// down or dead defers the checkpoint instead of hitting SV_SaveGame_f's
+	// "Can't savegame while dead" test (g_coop.cpp)
+	G_CoopWriteAutosave();
 }
 
 /*QUAKED target_autosave (1 0 0) (-4 -4 -4) (4 4 4)
